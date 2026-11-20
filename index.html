@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MOLDOVA TRUCK SIMULATOR 2D — Euro Truck 2D</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Top Navigation Bar (ETS2 Desktop Shell) -->
+  <header class="ets-topbar">
+    <div class="topbar-brand">
+      <span class="flag-icon">🇲🇩</span>
+      <span class="brand-title">MOLDOVA<span>TRUCK</span> 2D</span>
+    </div>
+    <nav class="topbar-nav">
+      <button class="nav-tab active" data-tab="drive">В КАБИНУ</button>
+      <button class="nav-tab" data-tab="jobs">БИРЖА ГРУЗОВ</button>
+      <button class="nav-tab" data-tab="map">КАРТА СТРАНЫ [M]</button>
+      <button class="nav-tab" data-tab="garage">ГАРАЖ</button>
+      <button class="nav-tab" data-tab="dealer">АВТОСАЛОН</button>
+      <button class="nav-tab" data-tab="help">СПРАВКА [?]</button>
+    </nav>
+    <div class="topbar-right">
+      <div class="profile-badge">
+        <span class="driver-name">Водитель 1-го класса</span>
+        <span class="wallet-badge"><span class="coin">₡</span> <span id="wallet-amount">48 500 MDL</span></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main High-Performance Simulation Canvas -->
+  <main class="sim-viewport">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Route Advisor HUD (ETS2 F3 Style) -->
+    <div class="route-advisor" id="route-advisor">
+      <div class="advisor-header">
+        <div class="truck-brand" id="hud-truck-model">VOLVO FH16 <strong>750</strong></div>
+        <div class="job-status-mini" id="hud-cargo-name">Молдавское вино (18 т)</div>
+      </div>
+
+      <!-- Telemetry Row: Speedometer & Gear -->
+      <div class="telemetry-bar">
+        <div class="speed-box">
+          <span class="speed-num" id="hud-speed">0</span>
+          <span class="speed-unit">KM/H</span>
+        </div>
+        <div class="gear-box" id="hud-gear">D1</div>
+        <div class="speed-limit-sign" id="hud-speed-limit" title="Ограничение скорости">90</div>
+        <div class="indicators-row">
+          <span class="ind-arrow" id="ind-left">◄</span>
+          <span class="ind-badge" id="ind-lights">OFF</span>
+          <span class="ind-badge" id="ind-trailer">TRAILER</span>
+          <span class="ind-badge" id="ind-park">PARK</span>
+          <span class="ind-arrow" id="ind-right">►</span>
+        </div>
+      </div>
+
+      <!-- Navigation / GPS Advisor -->
+      <div class="nav-advisor">
+        <div class="nav-direction">
+          <div class="compass-arrow" id="hud-nav-arrow">▲</div>
+        </div>
+        <div class="nav-details">
+          <div class="nav-target" id="hud-nav-dest">Загрузка маршрута...</div>
+          <div class="nav-stats">
+            Осталось: <strong id="hud-nav-dist">—</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status Gauges: Fuel, Air Brakes, Damage -->
+      <div class="gauges-row">
+        <div class="gauge-item">
+          <span class="g-label">Топливо</span>
+          <strong id="hud-fuel">580 L</strong>
+        </div>
+        <div class="gauge-item">
+          <span class="g-label">Воздух</span>
+          <strong id="hud-air">9.5 bar</strong>
+        </div>
+        <div class="gauge-item">
+          <span class="g-label">Тягач</span>
+          <strong id="hud-truck-damage">0%</strong>
+        </div>
+        <div class="gauge-item">
+          <span class="g-label">Груз</span>
+          <strong id="hud-cargo-damage">0%</strong>
+        </div>
+        <div class="gauge-item">
+          <span class="g-label">Пробег</span>
+          <strong id="hud-odometer">14 280 km</strong>
+        </div>
+      </div>
+
+      <div class="advisor-footer">
+        <span class="hint-text">Газ/Тормоз [W/S] · Руль [A/D] · Сцепка [T] · Задний ход [R] · Ручник [Space] · Карта [M]</span>
+      </div>
+    </div>
+
+    <!-- Delivery / Loading Prompt Overlay -->
+    <div class="delivery-prompt" id="delivery-prompt">
+      [РАМПА] Нажмите ПРОБЕЛ для сдачи груза
+    </div>
+
+    <!-- In-game Toast Notification -->
+    <div id="toast"></div>
+  </main>
+
+  <!-- OVERLAYS / MODALS FOR ETS2 MENUS -->
+
+  <!-- 1. World Map Modal [M] -->
+  <div class="modal-backdrop" id="modal-map">
+    <div class="modal-window modal-large">
+      <div class="modal-header">
+        <h3>КАРТА ДОРОГ МОЛДОВЫ (M2 · R14 · M1 · M5)</h3>
+        <button class="btn-close" data-close="modal-map">×</button>
+      </div>
+      <div class="modal-body map-container">
+        <canvas id="world-map-canvas"></canvas>
+        <div class="map-legend">
+          <span><i class="dot-truck"></i> Ваш тягач</span>
+          <span><i class="dot-target"></i> Пункт разгрузки</span>
+          <span><i class="dot-city"></i> Города</span>
+          <span><i class="dot-gas"></i> АЗС</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Job Market Modal -->
+  <div class="modal-backdrop" id="modal-jobs">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3>БИРЖА ГРУЗОВ (FREIGHT MARKET)</h3>
+        <button class="btn-close" data-close="modal-jobs">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-intro">Выберите коммерческий контракт на перевозку груза:</p>
+        <div class="job-list" id="job-list">
+          <!-- Populated by app.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Garage Modal -->
+  <div class="modal-backdrop" id="modal-garage">
+    <div class="modal-window modal-large">
+      <div class="modal-header">
+        <h3>МОЙ ГАРАЖ И АВТОПАРК</h3>
+        <button class="btn-close" data-close="modal-garage">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="garage-layout">
+          <div class="garage-list" id="garage-trucks-list">
+            <!-- Owned trucks list -->
+          </div>
+          <div class="garage-details" id="garage-details">
+            <h4 id="detail-truck-name">КамАЗ 54901 Continent</h4>
+            <p id="detail-truck-desc">Надёжный тягач для региональных рейсов.</p>
+            <div class="spec-grid">
+              <div class="spec-box"><span class="spec-lbl">Мощность</span><strong id="detail-power">450 л.с.</strong></div>
+              <div class="spec-box"><span class="spec-lbl">Крутящий момент</span><strong id="detail-torque">2060 Н·м</strong></div>
+              <div class="spec-box"><span class="spec-lbl">Топливный бак</span><strong id="detail-tank">500 л</strong></div>
+              <div class="spec-box"><span class="spec-lbl">Масса</span><strong id="detail-mass">7 900 кг</strong></div>
+            </div>
+            <div class="garage-actions">
+              <button class="btn-select-truck" id="btn-activate-truck">СЕСТЬ ЗА РУЛЬ</button>
+              <button class="btn-tune-truck" id="btn-tune-engine">ЧИП-ТЮНИНГ (+40 л.с.) — 15 000 MDL</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Truck Dealership Modal -->
+  <div class="modal-backdrop" id="modal-dealer">
+    <div class="modal-window modal-large">
+      <div class="modal-header">
+        <h3>АВТОСАЛОН ТЯГАЧЕЙ (ДИЛЕРСКИЙ ЦЕНТР)</h3>
+        <button class="btn-close" data-close="modal-dealer">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-intro">Покупка новых европейских и отечественных магистральных тягачей:</p>
+        <div class="dealer-grid" id="dealer-grid">
+          <!-- Populated by app.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Help / Controls Modal -->
+  <div class="modal-backdrop" id="modal-help">
+    <div class="modal-window">
+      <div class="modal-header">
+        <h3>УПРАВЛЕНИЕ И СПРАВКА ДАЛЬНОБОЙЩИКА</h3>
+        <button class="btn-close" data-close="modal-help">×</button>
+      </div>
+      <div class="modal-body">
+        <table class="help-table">
+          <tr><td><kbd>W</kbd> / <kbd>↑</kbd></td><td>Газ (ускорение)</td></tr>
+          <tr><td><kbd>S</kbd> / <kbd>↓</kbd></td><td>Пневматический тормоз</td></tr>
+          <tr><td><kbd>A</kbd> / <kbd>D</kbd></td><td>Руль (поворот передних колёс)</td></tr>
+          <tr><td><kbd>R</kbd></td><td>Задний ход (R) / Передний ход (D)</td></tr>
+          <tr><td><kbd>Пробел</kbd></td><td>Стояночный тормоз (ручник) / сдача груза на рампе</td></tr>
+          <tr><td><kbd>T</kbd></td><td>Сцепка / расцепка полуприцепа</td></tr>
+          <tr><td><kbd>L</kbd></td><td>Свет фар (Выкл / Ближний / Дальний)</td></tr>
+          <tr><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>Поворотники (Левый / Правый)</td></tr>
+          <tr><td><kbd>F</kbd></td><td>Аварийная сигнализация</td></tr>
+          <tr><td><kbd>H</kbd></td><td>Пневмогудок (Air Horn)</td></tr>
+          <tr><td><kbd>M</kbd></td><td>Карта дорог Молдовы</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="src/map.js"></script>
+  <script src="src/trucks.js"></script>
+  <script src="src/engine.js"></script>
+  <script src="src/audio.js"></script>
+  <script src="src/renderer.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>

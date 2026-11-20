@@ -1,0 +1,691 @@
+/* 2D ETS2 Moldova Edition | Clean Minimalist Dark Styles */
+:root {
+  --bg: #0c1013;
+  --surface: #13191d;
+  --panel: #171e22;
+  --line: #283034;
+  --text: #f0f2ec;
+  --muted: #7e8a8f;
+  --lime: #d4ff42;
+  --teal: #55e6c3;
+  --red: #ff5656;
+  --mono: Consolas, "Courier New", monospace;
+  --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
+body, html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  font-family: var(--body);
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Minimal Topbar */
+.ets-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 44px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 250;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand-title {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+.brand-title span {
+  color: var(--lime);
+}
+
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nav-tab:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+.nav-tab.active {
+  color: #0c1013;
+  background: var(--lime);
+  border-color: var(--lime);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.wallet-badge {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--lime);
+}
+
+/* Simulation Viewport */
+.sim-viewport {
+  position: absolute;
+  top: 44px;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 44px);
+}
+
+#game-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: var(--bg);
+}
+
+/* Route Advisor Telemetry HUD */
+.route-advisor {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 340px;
+  background: rgba(19, 25, 29, 0.95);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+  font-family: var(--mono);
+}
+
+.advisor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 5px;
+}
+
+.truck-brand {
+  font-size: 11px;
+  color: var(--muted);
+}
+.truck-brand strong {
+  color: var(--text);
+}
+
+.job-status-mini {
+  font-size: 10px;
+  color: var(--teal);
+}
+
+.telemetry-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 6px 10px;
+  border-radius: 3px;
+}
+
+.speed-box {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+
+.speed-num {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--lime);
+  line-height: 1;
+}
+
+.speed-unit {
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.gear-box {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--teal);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+  border-radius: 3px;
+  min-width: 32px;
+  text-align: center;
+}
+
+.speed-limit-sign {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid #e84118;
+  color: #000;
+  font-weight: 900;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.speed-limit-sign.overspeed {
+  box-shadow: 0 0 10px #e84118;
+}
+
+.indicators-row {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ind-arrow {
+  color: #353b48;
+  font-size: 12px;
+}
+.ind-arrow.active {
+  color: var(--lime);
+}
+
+.ind-badge {
+  font-size: 8px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: var(--panel);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.ind-badge.active {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+#ind-trailer.active {
+  background: var(--teal);
+  color: #0c1013;
+  border-color: var(--teal);
+}
+#ind-lights.active {
+  background: var(--lime);
+  color: #0c1013;
+  border-color: var(--lime);
+}
+
+/* Navigation / GPS Advisor */
+.nav-advisor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border-left: 2px solid var(--teal);
+  padding: 5px 8px;
+  border-radius: 2px;
+}
+
+.compass-arrow {
+  font-size: 16px;
+  color: var(--lime);
+  display: inline-block;
+  transition: transform 0.1s linear;
+}
+
+.nav-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-target {
+  font-size: 11px;
+  color: var(--text);
+}
+
+.nav-stats {
+  font-size: 9.5px;
+  color: var(--muted);
+}
+.nav-stats strong {
+  color: var(--teal);
+}
+
+/* Gauges Row */
+.gauges-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  text-align: center;
+}
+
+.gauge-item {
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 3px 2px;
+  border-radius: 2px;
+}
+
+.g-label {
+  font-size: 8px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.gauge-item strong {
+  font-size: 9.5px;
+  color: var(--text);
+}
+
+.hint-text {
+  font-size: 8.5px;
+  color: var(--muted);
+  text-align: center;
+  display: block;
+}
+
+/* Toast */
+#toast {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 6px 14px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+#toast.show {
+  opacity: 1;
+}
+#toast.error {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+/* Clean Modals */
+.modal-backdrop {
+  position: fixed;
+  top: 44px;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 44px);
+  background: rgba(12, 16, 19, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.modal-backdrop.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-window {
+  width: 90%;
+  max-width: 680px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+.modal-window.modal-large {
+  max-width: 860px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--panel);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-header h3 {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.5px;
+}
+.btn-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+.btn-close:hover {
+  color: var(--text);
+}
+
+.modal-body {
+  padding: 14px 16px;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+.modal-intro {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+/* Clean Cards */
+.job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.job-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 10px 12px;
+  transition: border-color 0.15s;
+}
+.job-card:hover {
+  border-color: var(--lime);
+}
+.job-info h4 {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.job-route {
+  font-size: 11px;
+  color: var(--teal);
+  margin-bottom: 2px;
+}
+.job-meta {
+  font-size: 10px;
+  color: var(--muted);
+}
+.job-pay {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.pay-amount {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--lime);
+}
+.btn-take-job {
+  background: var(--lime);
+  border: none;
+  color: #0c1013;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 10px;
+  padding: 5px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.btn-take-job:hover {
+  background: #e1ff7b;
+}
+
+/* Garage Layout */
+.garage-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 14px;
+}
+.garage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+.truck-list-item {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.truck-list-item:hover {
+  border-color: var(--muted);
+}
+.truck-list-item.selected {
+  border-color: var(--lime);
+}
+.truck-list-item h5 {
+  font-size: 12px;
+  color: var(--text);
+}
+.truck-list-item span {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.garage-details {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.garage-details h4 {
+  font-size: 16px;
+  color: var(--text);
+}
+.garage-details p {
+  font-size: 11px;
+  color: var(--muted);
+}
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.spec-box {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  border-radius: 2px;
+  display: flex;
+  flex-direction: column;
+}
+.spec-lbl {
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.spec-box strong {
+  font-size: 13px;
+  color: var(--teal);
+  font-family: var(--mono);
+}
+.garage-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.btn-select-truck {
+  flex: 1;
+  background: var(--lime);
+  border: none;
+  color: #0c1013;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 11px;
+  padding: 8px 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.btn-tune-truck {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 10px;
+  padding: 8px 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.btn-tune-truck:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+/* Dealership Grid */
+.dealer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.dealer-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dealer-card h4 {
+  font-size: 13px;
+  color: var(--text);
+}
+.dealer-desc {
+  font-size: 10px;
+  color: var(--muted);
+  min-height: 28px;
+}
+.dealer-specs {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--teal);
+  font-family: var(--mono);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 4px 0;
+}
+.dealer-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+.dealer-price {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--lime);
+}
+.btn-buy-truck {
+  background: var(--lime);
+  border: none;
+  color: #0c1013;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.btn-buy-truck:disabled {
+  background: var(--line);
+  color: var(--muted);
+  cursor: default;
+}
+
+/* Map Canvas */
+#world-map-canvas {
+  width: 100%;
+  max-width: 800px;
+  height: 440px;
+  background: #0a0d10;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.map-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+  margin-top: 6px;
+}
+
+/* Help Table */
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: var(--mono);
+}
+.help-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+kbd {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 1px 5px;
+  border-radius: 2px;
+  color: var(--lime);
+}
