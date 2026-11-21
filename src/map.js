@@ -519,7 +519,7 @@
     { id: 'textiles', name: 'Produse Textile (Tiraspol)', nameRu: 'Текстиль и ткани (Тиротекс)', weightKg: 12000, valuePerKm: 30, type: 'dryvan' }
   ];
 
-  // Cities of Republic of Moldova (Google Maps Style)
+  // Cities of Republic of Moldova
   const CITIES = [
     { id: 'chisinau', name: 'Chișinău', nameRu: 'Кишинёв', x: 1200, y: 3000, rank: 1, desc: 'Столица Республики Молдова' },
     { id: 'balti', name: 'Bălți', nameRu: 'Бельцы', x: -8500, y: -40000, rank: 1, desc: 'Северная индустриальная столица' },
@@ -541,15 +541,9 @@
     { id: 'anenii-noi', name: 'Anenii Noi', nameRu: 'Новые Анены', x: 11500, y: 5400, rank: 3, desc: 'Трасса R2 на Тирасполь' }
   ];
 
-  // Logistics Hubs & Freight Loading Depots across Moldova
-  const DEPOTS = [
-    { id: 'chisinau-hub', name: 'Trans-Moldova Chișinău', cityName: 'Кишинёв', x: 750, y: 3150, rampX: 750, rampY: 3150 },
-    { id: 'orhei-terminal', name: 'Orhei Logistics Terminal', cityName: 'Орхей', x: 1000, y: -20744, rampX: 1000, rampY: -20744 },
-    { id: 'balti-hub', name: 'Bălți Agro-Mașini Terminal', cityName: 'Бельцы', x: -9000, y: -41600, rampX: -9000, rampY: -41600 },
-    { id: 'ungheni-terminal', name: 'Ungheni Customs & Rail Port', cityName: 'Унгены', x: -30400, y: 2300, rampX: -30400, rampY: 2300 },
-    { id: 'tiraspol-terminal', name: 'Tiraspol Logistic Terminal', cityName: 'Тирасполь', x: 17900, y: 6500, rampX: 17900, rampY: 6500 },
-    { id: 'hincesti-terminal', name: 'Hîncești Vit-Agro Terminal', cityName: 'Хынчешты', x: -2500, y: 20200, rampX: -2500, rampY: 20200 }
-  ];
+  // Dynamic DEPOTS & FUELS containers loaded strictly from data/moldova-map.json
+  const DEPOTS = [];
+  const FUELS = [];
 
   // Major Highway Interchanges & Roundabouts (Seamless Paved Junctions)
   const JUNCTIONS = [
@@ -685,21 +679,8 @@
       }
     ],
 
-    // POIs: Gas Stations, Truck Stops, Logistics Hubs, Warehouses
-    pois: [
-      { id: 'gas-rompetrol-peresecina', name: 'АЗС Rompetrol M2 Peresecina', type: 'gas', x: -650, y: -12800, label: 'Rompetrol' },
-      { id: 'gas-petrom-stauceni', name: 'АЗС Petrom Stăuceni', type: 'gas', x: 1400, y: 800, label: 'Petrom' },
-      { id: 'gas-lukoil-balti', name: 'АЗС Lukoil Bălți Sud', type: 'gas', x: -7400, y: -37500, label: 'Lukoil' },
-      { id: 'gas-tirex-ungheni', name: 'АЗС Tirex Petrol Ungheni', type: 'gas', x: -28200, y: 2550, label: 'Tirex' },
-      { id: 'gas-bemol-tiraspol', name: 'АЗС Bemol Tiraspol', type: 'gas', x: 15800, y: 6150, label: 'Bemol' },
-      { id: 'gas-petrom-hincesti', name: 'АЗС Petrom Hîncești', type: 'gas', x: -1600, y: 18200, label: 'Petrom' },
-      { id: 'depot-chisinau', name: 'База Trans-Moldova Chișinău', type: 'depot', x: 750, y: 3150, label: 'Trans-MD' },
-      { id: 'depot-orhei', name: 'Терминал Orhei Logistics', type: 'depot', x: 1000, y: -20744, label: 'Orhei Log' },
-      { id: 'depot-balti', name: 'Терминал Bălți Agro-Mașini', type: 'depot', x: -9000, y: -41600, label: 'Bălți Hub' },
-      { id: 'depot-ungheni', name: 'Терминал Ungheni Vamă / Port', type: 'depot', x: -30400, y: 2300, label: 'Ungheni Port' },
-      { id: 'depot-tiraspol', name: 'Тираспольский промышленный хаб', type: 'depot', x: 17900, y: 6500, label: 'Тиротекс' },
-      { id: 'depot-hincesti', name: 'Винзавод Hîncești Vit-Agro', type: 'depot', x: -2500, y: 20200, label: 'Hîncești Vin' }
-    ]
+    // Dynamic POIs (Populated strictly from data/moldova-map.json)
+    pois: []
   };
 
   // Environment Buildings & City Architecture footprint for visual realism in 2D
@@ -727,7 +708,16 @@
   // ==============================================================
   // REAL OPENSTREETMAP ROAD NETWORK GRAPH & A* ROUTING
   // ==============================================================
-  let osmMap = (typeof root !== 'undefined' && root.OSM_MOLDOVA_MAP) ? root.OSM_MOLDOVA_MAP : null;
+  let osmMap = null;
+  if (typeof root !== 'undefined' && root) {
+    osmMap = root.OSM_MOLDOVA_MAP || (root.window && root.window.OSM_MOLDOVA_MAP);
+  }
+  if (!osmMap && typeof window !== 'undefined' && window) {
+    osmMap = window.OSM_MOLDOVA_MAP;
+  }
+  if (!osmMap && typeof globalThis !== 'undefined' && globalThis) {
+    osmMap = globalThis.OSM_MOLDOVA_MAP || (globalThis.window && globalThis.window.OSM_MOLDOVA_MAP);
+  }
   if (!osmMap && typeof require !== 'undefined') {
     try {
       const fs = require('node:fs');
@@ -888,6 +878,55 @@
     return { x: last[0], y: last[1], angle: Math.atan2(last[1] - prev[1], last[0] - prev[0]) };
   }
 
+  // Populate DEPOTS, FUELS and GEOGRAPHY.pois strictly from osmMap data (moldova-map.json)
+  function initMapObjects() {
+    DEPOTS.length = 0;
+    FUELS.length = 0;
+    GEOGRAPHY.pois = [];
+
+    if (osmMap && Array.isArray(osmMap.depots)) {
+      for (const d of osmMap.depots) {
+        if (!d.nearestNodeId && typeof findNearestNode === 'function') {
+          d.nearestNodeId = findNearestNode(d.x, d.y);
+        }
+        d.rampX = d.x;
+        d.rampY = d.y;
+        DEPOTS.push(d);
+        GEOGRAPHY.pois.push({
+          id: d.id,
+          name: d.name,
+          cityName: d.cityName,
+          type: 'depot',
+          x: d.x,
+          y: d.y,
+          label: d.cityName || d.name,
+          nearestNodeId: d.nearestNodeId
+        });
+      }
+    }
+
+    if (osmMap && Array.isArray(osmMap.fuels)) {
+      for (const f of osmMap.fuels) {
+        if (!f.nearestNodeId && typeof findNearestNode === 'function') {
+          f.nearestNodeId = findNearestNode(f.x, f.y);
+        }
+        FUELS.push(f);
+        GEOGRAPHY.pois.push({
+          id: f.id,
+          name: f.name || `АЗС ${f.brand || ''}`.trim(),
+          brand: f.brand,
+          type: 'gas',
+          x: f.x,
+          y: f.y,
+          label: f.brand || f.name || 'АЗС',
+          nearestNodeId: f.nearestNodeId
+        });
+      }
+    }
+  }
+
+  initMapObjects();
+
   const MapSystem = {
     ETS2_SCALE,
     realKmToUnits,
@@ -899,14 +938,17 @@
     findNearestNode,
     getPositionAlongPolyline,
     CITIES: (osmMap && osmMap.cities && osmMap.cities.length > 10) ? osmMap.cities : CITIES,
-    DEPOTS: (osmMap && osmMap.depots && osmMap.depots.length >= 6) ? osmMap.depots : DEPOTS,
+    DEPOTS,
+    FUELS,
     JUNCTIONS,
     ROAD_SIGNS,
     CITY_BLOCKS,
     GEOGRAPHY,
     CARGO_CATALOG,
-    getAllDepots: () => (osmMap && osmMap.depots) ? osmMap.depots : DEPOTS,
-    getStartSpawn: () => ({ x: 1200, y: 2950, angle: -Math.PI / 2 })
+    getAllDepots: () => DEPOTS,
+    getAllFuels: () => FUELS,
+    getStartSpawn: () => ({ x: 1200, y: 2950, angle: -Math.PI / 2 }),
+    initMapObjects
   };
 
   root.ETSMap = MapSystem;

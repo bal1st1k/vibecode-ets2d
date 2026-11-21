@@ -45,47 +45,44 @@ async function takeScreenshots() {
   await page.click('[data-nav="map"]');
   await page.waitForTimeout(600);
 
-  // --- Screenshot 1: Full Country Overview ---
-  console.log('[2/4] Capturing 1: Overview Country (Zoom out)...');
+  // --- Screenshot 1: Full Country Overview (Дальний зум: Fit to bounds) ---
+  console.log('[1/4] Capturing 1: Full Country Overview (Дальний зум: Fit to bounds)...');
   await page.evaluate(() => {
-    // Zoom out to see full country
-    window.location.hash = '#map';
-    const canvas = document.querySelector('#world-map-canvas');
-    if (canvas) {
-      // Trigger zoom out via synthetic events or click
-      const zoomOut = document.querySelector('#btn-gmaps-zoom-out');
-      if (zoomOut) {
-        for (let i = 0; i < 4; i++) zoomOut.click();
-      }
+    // Ensure fit to bounds
+    if (typeof window.fitMapToBounds === 'function') {
+      window.fitMapToBounds();
     }
   });
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(600);
   const pathOverview = path.join(SCREENSHOTS_DIR, '01-overview-country.png');
   await page.screenshot({ path: pathOverview });
   console.log(`✔ Saved: ${pathOverview}`);
 
-  // --- Screenshot 2: Chișinău - Orhei Corridor (Traseul M2) ---
-  console.log('[3/4] Capturing 2: Chișinău — Orhei M2 Highway Corridor...');
+  // --- Screenshot 2: Regional View (Средний зум) ---
+  console.log('[2/4] Capturing 2: Regional View (Средний зум)...');
   await page.evaluate(() => {
     const zoomIn = document.querySelector('#btn-gmaps-zoom-in');
     if (zoomIn) {
-      for (let i = 0; i < 3; i++) zoomIn.click();
+      zoomIn.click();
+      zoomIn.click();
     }
   });
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(600);
   const pathCorridor = path.join(SCREENSHOTS_DIR, '02-corridor-chisinau-orhei.png');
   await page.screenshot({ path: pathCorridor });
   console.log(`✔ Saved: ${pathCorridor}`);
 
-  // --- Screenshot 3: Close Zoom on Orhei Curves & Depot ---
-  console.log('[4/4] Capturing 3: Close Tactical View (Orhei curves & depot)...');
+  // --- Screenshot 3: Tactical Close View (Ближний зум) ---
+  console.log('[3/4] Capturing 3: Tactical Close View (Ближний зум)...');
   await page.evaluate(() => {
     const zoomIn = document.querySelector('#btn-gmaps-zoom-in');
     if (zoomIn) {
-      for (let i = 0; i < 3; i++) zoomIn.click();
+      zoomIn.click();
+      zoomIn.click();
+      zoomIn.click();
     }
   });
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(600);
   const pathClose = path.join(SCREENSHOTS_DIR, '03-close-orhei-curves.png');
   await page.screenshot({ path: pathClose });
   console.log(`✔ Saved: ${pathClose}`);

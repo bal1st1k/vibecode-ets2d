@@ -5,6 +5,7 @@ node_modules/
 .env.local
 .env.*.local
 
-# OSM raw cache
+# OSM raw cache & generated second format
 *.pbf
 data/*.osm.pbf
+data/moldova-map.js

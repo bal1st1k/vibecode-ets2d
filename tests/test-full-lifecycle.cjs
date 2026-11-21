@@ -90,8 +90,10 @@ function runSession(name, initialStorage) {
   let raf = null;
   const documentListeners = {};
 
+  const osmData = JSON.parse(fs.readFileSync(path.join(base, 'data/moldova-map.json'), 'utf8'));
+
   const sandbox = {
-    window: {},
+    window: { OSM_MOLDOVA_MAP: osmData },
     document: {
       querySelector: getEl,
       querySelectorAll: sel => [getEl(sel)],

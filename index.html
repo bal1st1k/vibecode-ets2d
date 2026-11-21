@@ -5,8 +5,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#202124">
-  <meta name="description" content="Moldova Truck Simulator 2D — 2D симулятор дальнобоя по Молдове на Canvas 2D + Web Audio API. Главное меню Neon Drift и навигационная карта Google Maps как в ETS 2.">
-  <title>MOLDOVA TRUCK SIMULATOR 2D — Euro Truck 2D (Google Maps Edition)</title>
+  <meta name="description" content="Moldova Truck Simulator 2D — 2D симулятор дальнобоя по Молдове на Canvas 2D + Web Audio API. Главное меню Neon Drift и дорожная сеть OpenStreetMap как в ETS 2.">
+  <title>MOLDOVA TRUCK SIMULATOR 2D — Euro Truck 2D (OpenStreetMap Edition)</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -49,7 +49,7 @@
         <button class="rail-button" data-nav="jobs" title="Биржа грузов"><svg><use href="#i-cargo"/></svg><span>Рейсы</span></button>
         <button class="rail-button" data-nav="garage" title="Мой автопарк"><svg><use href="#i-truck"/></svg><span>Гараж</span></button>
         <button class="rail-button" data-nav="dealer" title="Автосалон"><svg><use href="#i-shop"/></svg><span>Салон</span></button>
-        <button class="rail-button rail-gmaps-highlight" data-nav="map" title="Google Maps (Карта Молдовы)"><svg><use href="#i-map"/></svg><span>Google Maps</span></button>
+        <button class="rail-button rail-gmaps-highlight" data-nav="map" title="Карта Молдовы (OpenStreetMap)"><svg><use href="#i-map"/></svg><span>Карта</span></button>
         <button class="rail-button rail-admin-btn" data-nav="admin" title="Админ-панель (Тесты)"><svg><use href="#i-tool"/></svg><span>Админ 🛠</span></button>
         <button class="rail-button" data-nav="help" title="Управление и справка"><svg><use href="#i-help"/></svg><span>Помощь</span></button>
       </nav>
@@ -104,7 +104,7 @@
             <div class="hero-actions">
               <button class="button button-lime" id="start-drive">В КАБИНУ <svg><use href="#i-arrow"/></svg></button>
               <button class="button button-outline" data-nav="jobs">БИРЖА ГРУЗОВ</button>
-              <button class="button button-outline" data-nav="map"><svg><use href="#i-map"/></svg> GOOGLE MAPS</button>
+              <button class="button button-outline" data-nav="map"><svg><use href="#i-map"/></svg> КАРТА МОЛДОВЫ</button>
               <button class="button button-outline button-admin-highlight" data-nav="admin"><svg><use href="#i-tool"/></svg> АДМИН-ПАНЕЛЬ</button>
             </div>
 
@@ -189,26 +189,26 @@
         </div>
       </section>
 
-      <!-- VIEW: 5. MAP (Google Maps Navigation Style ETS 2 Map) -->
+      <!-- VIEW: 5. MAP (OpenStreetMap Navigation Style ETS 2 Map) -->
       <section id="view-map" class="page" hidden aria-labelledby="map-title">
         <div class="view-header">
-          <div class="eyebrow"><span class="tiny-square"></span> НАВИГАЦИОННАЯ СИСТЕМА GPS (ETS 2)</div>
-          <h2 id="map-title">Google Maps · Молдова<span>.</span></h2>
-          <p class="view-subtitle">Интерактивная карта трассы M2 (Кишинёв — Орхей) с панорамированием, масштабированием колесом мыши, АЗС и точками телепортации.</p>
+          <div class="eyebrow"><span class="tiny-square"></span> НАВИГАЦИОННАЯ СИСТЕМА GPS · OPENSTREETMAP</div>
+          <h2 id="map-title">Карта Молдовы<span>.</span></h2>
+          <p class="view-subtitle">Интерактивная карта дорожной сети OpenStreetMap (масштаб ETS2 1:19) с навигацией A*, АЗС и городами.</p>
         </div>
 
         <!-- Google Maps Main App Container -->
         <div class="google-maps-app" id="google-maps-app">
-          <!-- Top Google Maps Search Bar & Filter Chips -->
+          <!-- Top Map Search Bar & Filter Chips -->
           <div class="gmaps-top-header">
             <div class="gmaps-search-box">
               <div class="gmaps-brand-icon">
-                <span class="g-blue">G</span><span class="g-red">o</span><span class="g-yellow">o</span><span class="g-blue">g</span><span class="g-green">l</span><span class="g-red">e</span>
-                <span class="g-tag">Maps</span>
+                <span class="osm-tag">OSM</span>
+                <span class="g-tag">Молдова</span>
               </div>
               <div class="gmaps-search-inner">
                 <svg class="gmaps-icon-search"><use href="#i-search"/></svg>
-                <input type="text" id="gmaps-search-input" value="Трасса M2 (Кишинёв — Орхей, 45 км)" placeholder="Поиск на карте...">
+                <input type="text" id="gmaps-search-input" value="Трасса M2 (Кишинёв — Орхей, 45 км)" placeholder="Поиск города или объекта...">
                 <button class="gmaps-clear-btn" id="btn-gmaps-clear-search">×</button>
               </div>
             </div>
@@ -240,7 +240,7 @@
               </button>
             </div>
 
-            <!-- Clicked Pin Popup Card (Google Maps Style) -->
+            <!-- Clicked Pin Popup Card -->
             <div class="gmaps-pin-card" id="gmaps-pin-card" hidden>
               <div class="pin-card-top">
                 <span class="pin-icon-tag">📍</span>
@@ -259,22 +259,25 @@
 
             <!-- Bottom Left Legend -->
             <div class="gmaps-bottom-legend">
-              <span class="glegend-item"><i class="gdot-route"></i> Маршрут M2 (45 км)</span>
+              <span class="glegend-item"><i class="gdot-route"></i> Активный маршрут A*</span>
               <span class="glegend-item"><i class="gdot-truck"></i> Тягач</span>
               <span class="glegend-item"><i class="gdot-gas"></i> АЗС</span>
               <span class="glegend-item"><i class="gdot-depot"></i> Склад</span>
               <span class="glegend-item"><i class="gdot-river"></i> Река Рэут</span>
             </div>
+
+            <!-- OpenStreetMap Attribution (Bottom Right) -->
+            <div class="osm-attribution">© OpenStreetMap contributors</div>
           </div>
 
-          <!-- Bottom Navigation ETA Bar (Google Maps Navigation Style) -->
-          <div class="gmaps-navigation-footer">
+          <!-- Bottom Navigation ETA Bar (GPS Navigation Style) -->
+          <div class="gmaps-navigation-footer" id="gmaps-navigation-footer">
             <div class="gmaps-nav-summary">
               <div class="gmaps-eta-text" id="gmaps-eta-time">34 мин</div>
               <div class="gmaps-eta-sub">
                 <span id="gmaps-eta-distance">45 км</span> · 
                 <span id="gmaps-eta-arrival">Прибытие в 22:50</span> · 
-                <span class="traffic-fast">Трасса M2 (Быстрейший маршрут)</span>
+                <span class="traffic-fast" id="gmaps-eta-route-name">Трасса M2 (Быстрейший маршрут)</span>
               </div>
             </div>
             <div class="gmaps-nav-cta">
@@ -567,7 +570,7 @@
               <tr><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>Поворотники</td><td>Левый / Правый указатель поворота с реле</td></tr>
               <tr><td><kbd>F</kbd></td><td>Аварийная сигнализация</td><td>Мигание всех указателей поворота</td></tr>
               <tr><td><kbd>H</kbd></td><td>Пневмогудок</td><td>Громкий пневматический сигнал (Air Horn)</td></tr>
-              <tr><td><kbd>M</kbd></td><td>Google Maps Карта Молдовы</td><td>Открыть интерактивную карту с зумом и поиском</td></tr>
+              <tr><td><kbd>M</kbd></td><td>Карта Молдовы</td><td>Открыть интерактивную карту дорог Молдовы с зумом и поиском</td></tr>
               <tr><td><kbd>Esc</kbd></td><td>Выход в меню</td><td>Пауза и возврат в главное меню симулятора</td></tr>
               <tr><td><kbd>F1</kbd> / <kbd>~</kbd></td><td>Админ-панель (Тесты)</td><td>Быстрое открытие админки с телепортом прямо за рулём!</td></tr>
             </tbody>
@@ -587,8 +590,8 @@
         <svg><use href="#i-arrow"/></svg> <span>В МЕНЮ [ESC]</span>
       </button>
 
-      <button class="drive-nav-btn gmaps-open-btn" id="btn-open-map-drive" title="Открыть Google Maps [M]">
-        <svg><use href="#i-map"/></svg> <span>GOOGLE MAPS [M]</span>
+      <button class="drive-nav-btn gmaps-open-btn" id="btn-open-map-drive" title="Открыть Карту Молдовы [M]">
+        <svg><use href="#i-map"/></svg> <span>КАРТА [M]</span>
       </button>
 
       <div class="drive-job-pill" id="drive-job-indicator">

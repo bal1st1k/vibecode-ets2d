@@ -551,6 +551,28 @@ async function buildMap() {
   console.log('===========================================================');
 }
 
+export function exportJsFromMapJson() {
+  if (!fs.existsSync(JSON_OUT_PATH)) {
+    console.error(`[export-js] File not found: ${JSON_OUT_PATH}`);
+    process.exit(1);
+  }
+  console.log(`[export-js] Generating ${JS_OUT_PATH} from ${JSON_OUT_PATH}...`);
+  const jsonStr = fs.readFileSync(JSON_OUT_PATH, 'utf8');
+  const jsContent = `/*! ETS2 2D | Pre-baked OSM Republic of Moldova Road Network */
+(function (root) {
+  'use strict';
+  root.OSM_MOLDOVA_MAP = ${jsonStr};
+})(typeof globalThis !== 'undefined' ? globalThis : window);
+`;
+  fs.writeFileSync(JS_OUT_PATH, jsContent, 'utf8');
+  console.log(`✔ Successfully generated ${JS_OUT_PATH}!`);
+}
+
+if (process.argv.includes('--export-js')) {
+  exportJsFromMapJson();
+  process.exit(0);
+}
+
 buildMap().catch(err => {
   console.error('[build-map] ERROR:', err);
   process.exit(1);

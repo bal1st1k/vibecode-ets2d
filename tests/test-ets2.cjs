@@ -162,8 +162,11 @@ const mapCode = fs.readFileSync(path.join(base, 'src/map.js'), 'utf8');
 const trucksCode = fs.readFileSync(path.join(base, 'src/trucks.js'), 'utf8');
 const engineCode = fs.readFileSync(path.join(base, 'src/engine.js'), 'utf8');
 
+const osmData = JSON.parse(fs.readFileSync(path.join(base, 'data/moldova-map.json'), 'utf8'));
+
 const sandbox = {
-  window: {},
+  window: { OSM_MOLDOVA_MAP: osmData },
+  OSM_MOLDOVA_MAP: osmData,
   console,
   Math,
   performance: { now: () => 1000 }

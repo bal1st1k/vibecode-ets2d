@@ -1813,6 +1813,32 @@ kbd {
   gap: 1px;
 }
 
+.osm-tag {
+  font: 800 15px var(--display);
+  letter-spacing: 0.5px;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.osm-attribution {
+  position: absolute;
+  bottom: 12px;
+  right: 14px;
+  background: rgba(18, 24, 30, 0.85);
+  backdrop-filter: blur(4px);
+  color: #94a3b8;
+  font: 500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+  user-select: none;
+  z-index: 6;
+}
+
 .g-tag {
   font: 700 11px var(--body);
   color: #9aa0a6;

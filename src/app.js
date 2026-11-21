@@ -133,37 +133,51 @@
   let gmapDragStart = { x: 0, y: 0 };
   let gmapPulseTimer = 0;
 
-  // Project World coordinates to Google Maps Canvas (North is UP!)
+  // Helper for map boundaries from OSM meta.bounds
+  function getMapBounds() {
+    return (map.OSM && map.OSM.meta && map.OSM.meta.bounds)
+      ? map.OSM.meta.bounds
+      : [-87580, -84310, 58012, 93884];
+  }
+
+  // Project World coordinates to Map Canvas (North is UP!)
   function worldToGmap(wx, wy, cw, ch) {
-    const centerX = -5000;
-    const centerY = -10000; // Geographic center of Moldova
-    const baseScale = Math.min((cw - 100) / 58000, (ch - 100) / 72000);
+    const b = getMapBounds();
+    const boundW = b[2] - b[0];
+    const centerX = (b[0] + b[2]) * 0.5;
+    const centerY = (b[1] + b[3]) * 0.5;
+    // Fit to bounds: country occupies entire width of canvas container
+    const baseScale = cw / boundW;
     const s = baseScale * gmapZoom;
     const cx = (cw * 0.5) + (wx - centerX) * s + gmapPanX;
     const cy = (ch * 0.5) + (wy - centerY) * s + gmapPanY;
     return { cx, cy, scale: s };
   }
 
-  // Inverse project Google Maps Canvas coordinates to World
+  // Inverse project Map Canvas coordinates to World
   function gmapToWorld(cx, cy, cw, ch) {
-    const centerX = -5000;
-    const centerY = -10000;
-    const baseScale = Math.min((cw - 100) / 58000, (ch - 100) / 72000);
+    const b = getMapBounds();
+    const boundW = b[2] - b[0];
+    const centerX = (b[0] + b[2]) * 0.5;
+    const centerY = (b[1] + b[3]) * 0.5;
+    const baseScale = cw / boundW;
     const s = baseScale * gmapZoom;
     const wx = centerX + (cx - (cw * 0.5) - gmapPanX) / s;
     const wy = centerY + (cy - (ch * 0.5) - gmapPanY) / s;
     return { wx, wy };
   }
 
-  // Center Google Maps viewport on specific world coordinates
+  // Center Map viewport on specific world coordinates
   function gmapCenterOn(wx, wy) {
     const canvas = worldMapCanvas;
     if (!canvas) return;
     const cw = canvas.width || 900;
     const ch = canvas.height || 520;
-    const centerX = -5000;
-    const centerY = -10000;
-    const baseScale = Math.min((cw - 100) / 58000, (ch - 100) / 72000);
+    const b = getMapBounds();
+    const boundW = b[2] - b[0];
+    const centerX = (b[0] + b[2]) * 0.5;
+    const centerY = (b[1] + b[3]) * 0.5;
+    const baseScale = cw / boundW;
     const s = baseScale * gmapZoom;
 
     gmapPanX = -((wx - centerX) * s);
@@ -299,34 +313,48 @@
     const viewMinY = Math.min(topLeft.wy, bottomRight.wy);
     const viewMaxY = Math.max(topLeft.wy, bottomRight.wy);
 
-    const showSecondary = gmapZoom >= 0.26;
-    const showTertiary = gmapZoom >= 0.65;
-    const s = Math.min((cw - 100) / 58000, (ch - 100) / 72000) * gmapZoom;
-    const centerX = -5000;
-    const centerY = -10000;
+    const b = getMapBounds();
+    const boundW = b[2] - b[0];
+    const centerX = (b[0] + b[2]) * 0.5;
+    const centerY = (b[1] + b[3]) * 0.5;
+    const baseScale = cw / boundW;
+    const s = baseScale * gmapZoom;
 
     const osmEdges = (map.OSM && map.OSM.edges) ? map.OSM.edges : null;
 
     if (osmEdges && osmEdges.length > 0) {
-      // Pass 1: Road Casings for all visible edges
-      ctx.strokeStyle = '#18212b';
+      // Pass 1: Road Casings
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
       for (let i = 0; i < osmEdges.length; i++) {
         const e = osmEdges[i];
-        const b = e.bounds;
-        if (b[0] > viewMaxX || b[2] < viewMinX || b[1] > viewMaxY || b[3] < viewMinY) continue;
+        const eb = e.bounds;
+        if (eb[0] > viewMaxX || eb[2] < viewMinX || eb[1] > viewMaxY || eb[3] < viewMinY) continue;
 
         const rc = e.roadClass;
-        if (rc === 'tertiary' || rc === 'tertiary_link') {
-          if (!showTertiary) continue;
+        let casingColor = '#18212b';
+        let casingW = 3;
+
+        if (rc === 'motorway' || rc === 'motorway_link') {
+          casingColor = '#78350f';
+          casingW = Math.max(4.5, 14.0 * s);
+        } else if (rc === 'trunk' || rc === 'trunk_link') {
+          casingColor = '#0369a1';
+          casingW = Math.max(4.0, 12.0 * s);
+        } else if (rc === 'primary' || rc === 'primary_link') {
+          casingColor = '#064e3b';
+          casingW = Math.max(2.8, 8.5 * s);
         } else if (rc === 'secondary' || rc === 'secondary_link') {
-          if (!showSecondary) continue;
+          casingColor = '#334155';
+          casingW = Math.max(2.2, 6.5 * s);
+        } else {
+          // tertiary (thin and dark)
+          casingColor = '#1e293b';
+          casingW = Math.max(1.5, 3.2 * s);
         }
 
-        const isMajor = rc === 'motorway' || rc === 'trunk' || rc === 'primary';
-        const casingW = Math.max(2.2, (isMajor ? 11 : rc === 'secondary' ? 7.5 : 5) * s);
+        ctx.strokeStyle = casingColor;
         ctx.lineWidth = casingW;
         ctx.beginPath();
         const pts = e.points;
@@ -338,30 +366,29 @@
         ctx.stroke();
       }
 
-      // Pass 2: Road Cores with True Highway Colors
+      // Pass 2: Road Cores (Motorway/trunk thick and bright, primary/secondary medium, tertiary thin and dark)
       for (let i = 0; i < osmEdges.length; i++) {
         const e = osmEdges[i];
-        const b = e.bounds;
-        if (b[0] > viewMaxX || b[2] < viewMinX || b[1] > viewMaxY || b[3] < viewMinY) continue;
+        const eb = e.bounds;
+        if (eb[0] > viewMaxX || eb[2] < viewMinX || eb[1] > viewMaxY || eb[3] < viewMinY) continue;
 
         const rc = e.roadClass;
-        if (rc === 'tertiary' || rc === 'tertiary_link') {
-          if (!showTertiary) continue;
-          ctx.strokeStyle = '#64748b'; // Tertiary gray
-          ctx.lineWidth = Math.max(1.2, 3.8 * s);
-        } else if (rc === 'secondary' || rc === 'secondary_link') {
-          if (!showSecondary) continue;
-          ctx.strokeStyle = '#cbd5e1'; // Secondary light gray
-          ctx.lineWidth = Math.max(1.6, 6.0 * s);
-        } else if (rc === 'primary' || rc === 'primary_link') {
-          ctx.strokeStyle = '#10b981'; // Primary Emerald
-          ctx.lineWidth = Math.max(2.0, 7.5 * s);
+        if (rc === 'motorway' || rc === 'motorway_link') {
+          ctx.strokeStyle = '#f59e0b'; // Motorway Bright Amber
+          ctx.lineWidth = Math.max(3.2, 10.5 * s);
         } else if (rc === 'trunk' || rc === 'trunk_link') {
-          ctx.strokeStyle = '#38bdf8'; // Trunk Sky Blue
-          ctx.lineWidth = Math.max(2.4, 9.0 * s);
+          ctx.strokeStyle = '#38bdf8'; // Trunk Bright Sky Blue
+          ctx.lineWidth = Math.max(2.8, 9.0 * s);
+        } else if (rc === 'primary' || rc === 'primary_link') {
+          ctx.strokeStyle = '#10b981'; // Primary Emerald Green
+          ctx.lineWidth = Math.max(2.0, 6.0 * s);
+        } else if (rc === 'secondary' || rc === 'secondary_link') {
+          ctx.strokeStyle = '#94a3b8'; // Secondary Medium Slate
+          ctx.lineWidth = Math.max(1.6, 4.8 * s);
         } else {
-          ctx.strokeStyle = '#f59e0b'; // Motorway Amber
-          ctx.lineWidth = Math.max(2.8, 10.5 * s);
+          // Tertiary: тонкие и тёмные
+          ctx.strokeStyle = '#334155'; // Tertiary Dark Slate
+          ctx.lineWidth = Math.max(1.0, 2.0 * s);
         }
 
         ctx.beginPath();
@@ -389,7 +416,7 @@
       });
     }
 
-    // 5. Active Dijkstra / A* Navigation Route (Signature Google Blue #4285F4)
+    // 5. Active Dijkstra / A* Navigation Route
     let currentNavRoute = null;
     if (profile.activeJob && profile.activeJob.targetDepot && map.findRoute) {
       currentNavRoute = map.findRoute(sim.truck, profile.activeJob.targetDepot);
@@ -419,47 +446,149 @@
       // White Center Strip with Moving Pulse Chevrons
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = Math.max(1.5, 2.5 * s);
-      ctx.setLineDash([12 * gmapZoom, 16 * gmapZoom]);
+      ctx.setLineDash([12 * Math.min(2, Math.max(0.8, gmapZoom)), 16 * Math.min(2, Math.max(0.8, gmapZoom))]);
       ctx.lineDashOffset = -(gmapPulseTimer * 40);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // 6. Road Shields (M2, M5, M1, R1, R6, R14, R20, etc.)
-    if (gmapZoom >= 0.35) {
-      const drawnShields = new Set();
-      const shieldList = [];
+    // Update bottom ETA panel real data / hide without active route
+    // Requirement 5: "Панель «Трасса M2 (45 км) / 34 мин» должна показывать реальные данные: длину и время активного маршрута из A*, а без маршрута скрываться."
+    const navFooter = document.querySelector('#gmaps-navigation-footer');
+    if (currentNavRoute && currentNavRoute.found && currentNavRoute.polyline && currentNavRoute.polyline.length >= 2) {
+      if (navFooter) navFooter.hidden = false;
+      const distKm = (currentNavRoute.totalDistKm).toFixed(1);
+      const estMinutes = currentNavRoute.totalEstMinutes;
+      const primaryRef = currentNavRoute.edges.find(e => e.ref)?.ref || 'M2';
+      safeText('#gmaps-eta-time', `${estMinutes} мин`);
+      safeText('#gmaps-eta-distance', `${distKm} км`);
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + estMinutes);
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      safeText('#gmaps-eta-arrival', `Прибытие в ${timeStr}`);
+      safeText('#gmaps-eta-route-name', `Трасса ${primaryRef} (${distKm} км) / ${estMinutes} мин`);
+    } else {
+      if (navFooter) navFooter.hidden = true;
+    }
 
-      // Add national highway shields
-      if (osmEdges) {
-        for (let i = 0; i < osmEdges.length; i += 12) {
-          const e = osmEdges[i];
-          if (e.ref && e.points.length >= 2 && !drawnShields.has(e.ref)) {
-            const midP = e.points[Math.floor(e.points.length / 2)];
-            if (midP[0] >= viewMinX && midP[0] <= viewMaxX && midP[1] >= viewMinY && midP[1] <= viewMaxY) {
-              const isM = e.ref.startsWith('M');
-              const isR = e.ref.startsWith('R');
-              if (isM || isR || gmapZoom >= 0.75) {
-                drawnShields.add(e.ref);
-                shieldList.push({
-                  x: midP[0],
-                  y: midP[1],
-                  label: e.ref,
-                  color: isM ? '#1b5e20' : '#b71c1c'
-                });
-              }
-            }
-          }
+    // 6. Label Placement with Collision Detection
+    // Requirement 1: "Дальний зум: только города с population > 50000 и номера трасс M*/R*. Средний: города/посёлки покрупнее. Ближний: все. Если подпись пересекается с уже нарисованной, пропускай её."
+    const placedBoxes = [];
+    function hasCollision(box) {
+      for (let i = 0; i < placedBoxes.length; i++) {
+        const o = placedBoxes[i];
+        if (box.x1 < o.x2 && box.x2 > o.x1 && box.y1 < o.y2 && box.y2 > o.y1) {
+          return true;
         }
       }
+      return false;
+    }
 
-      shieldList.forEach(sh => {
-        const { cx, cy } = worldToGmap(sh.x, sh.y, cw, ch);
-        const isWide = sh.label.length > 3;
-        const sw = (isWide ? 42 : 28) * Math.min(1.2, Math.max(0.7, gmapZoom));
-        const sh2 = 16 * Math.min(1.2, Math.max(0.7, gmapZoom));
+    const isFarZoom = gmapZoom <= 1.25;
+    const isMidZoom = gmapZoom > 1.25 && gmapZoom <= 2.2;
+    const isCloseZoom = gmapZoom > 2.2;
 
-        ctx.fillStyle = sh.color;
+    // A. Priority 1: Cities & Settlements
+    const allCities = [...(map.CITIES || [])];
+    allCities.sort((a, b) => {
+      const aCap = a.nameRu === 'Кишинёв' || a.nameRo === 'Chișinău';
+      const bCap = b.nameRu === 'Кишинёв' || b.nameRo === 'Chișinău';
+      if (aCap) return -1;
+      if (bCap) return 1;
+      return (b.population || 0) - (a.population || 0);
+    });
+
+    for (const city of allCities) {
+      const isCapital = city.nameRu === 'Кишинёв' || city.nameRo === 'Chișinău';
+      const pop = city.population || 0;
+
+      // Filter by LOD zoom level
+      if (isFarZoom) {
+        if (!isCapital && pop <= 50000) continue;
+      } else if (isMidZoom) {
+        if (!isCapital && pop < 10000 && city.place !== 'city' && city.place !== 'town') continue;
+      }
+
+      const { cx, cy } = worldToGmap(city.x, city.y, cw, ch);
+      if (cx < -40 || cx > cw + 40 || cy < -40 || cy > ch + 40) continue;
+
+      const isMajor = isCapital || pop > 30000 || city.place === 'city';
+      const labelText = city.nameRu || city.name || city.nameRo;
+      const fontSize = isCapital ? 13 : isMajor ? 11 : 9;
+      const fontWeight = isCapital ? '700' : isMajor ? '600' : '500';
+      ctx.font = `${fontWeight} ${fontSize}px Roboto, sans-serif`;
+      const tw = ctx.measureText(labelText).width;
+      const dr = isCapital ? 6 : isMajor ? 4.5 : 3;
+
+      const box = {
+        x1: cx - dr - 3,
+        y1: cy - fontSize,
+        x2: cx + dr + 8 + tw + 3,
+        y2: cy + 6
+      };
+
+      if (hasCollision(box)) continue; // Collision detected -> skip!
+      placedBoxes.push(box);
+
+      // Draw City Dot
+      ctx.fillStyle = isCapital ? '#f59e0b' : '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx, cy, dr * Math.min(1.3, Math.max(0.8, gmapZoom)), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#202124';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Draw City Label
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = '#000000';
+      ctx.shadowBlur = 4;
+      ctx.fillText(labelText, cx + dr + 6, cy + 4);
+      ctx.shadowBlur = 0;
+    }
+
+    // B. Priority 2: Road Shields
+    if (osmEdges) {
+      const drawnShields = new Set();
+      const shieldStep = isFarZoom ? 18 : isMidZoom ? 12 : 8;
+
+      for (let i = 0; i < osmEdges.length; i += shieldStep) {
+        const e = osmEdges[i];
+        if (!e.ref || e.points.length < 2 || drawnShields.has(e.ref)) continue;
+
+        const isM = e.ref.startsWith('M');
+        const isR = e.ref.startsWith('R');
+
+        // LOD filter: far & mid zoom only show M* and R*
+        if (isFarZoom || isMidZoom) {
+          if (!isM && !isR) continue;
+        }
+
+        const midP = e.points[Math.floor(e.points.length / 2)];
+        if (midP[0] < viewMinX || midP[0] > viewMaxX || midP[1] < viewMinY || midP[1] > viewMaxY) continue;
+
+        const { cx, cy } = worldToGmap(midP[0], midP[1], cw, ch);
+        if (cx < 20 || cx > cw - 20 || cy < 20 || cy > ch - 20) continue;
+
+        const sFactor = Math.min(1.2, Math.max(0.8, gmapZoom));
+        const isWide = e.ref.length > 3;
+        const sw = (isWide ? 40 : 28) * sFactor;
+        const sh2 = 16 * sFactor;
+
+        const shieldBox = {
+          x1: cx - sw * 0.5 - 3,
+          y1: cy - sh2 * 0.5 - 3,
+          x2: cx + sw * 0.5 + 3,
+          y2: cy + sh2 * 0.5 + 3
+        };
+
+        if (hasCollision(shieldBox)) continue; // Overlap detected -> skip!
+
+        drawnShields.add(e.ref);
+        placedBoxes.push(shieldBox);
+
+        // Draw Shield
+        ctx.fillStyle = isM ? '#1b5e20' : '#b71c1c';
         ctx.beginPath();
         ctx.roundRect(cx - sw * 0.5, cy - sh2 * 0.5, sw, sh2, 3);
         ctx.fill();
@@ -468,78 +597,93 @@
         ctx.stroke();
 
         ctx.fillStyle = '#ffffff';
-        ctx.font = `bold ${Math.round(9 * Math.min(1.2, Math.max(0.7, gmapZoom)))}px Consolas, monospace`;
+        ctx.font = `bold ${Math.round(9 * sFactor)}px Consolas, monospace`;
         ctx.textAlign = 'center';
-        ctx.fillText(sh.label, cx, cy + sh2 * 0.22);
+        ctx.fillText(e.ref, cx, cy + sh2 * 0.22);
         ctx.textAlign = 'left';
-      });
+      }
     }
 
-    // 8. Freight Logistics Depots & Terminals
+    // C. Priority 3: Freight Logistics Depots & Terminals
     const allDepots = map.getAllDepots ? map.getAllDepots() : (map.DEPOTS || []);
-    allDepots.forEach(depot => {
-      const { cx, cy } = worldToGmap(depot.x, depot.y, cw, ch);
+    if (gmapZoom >= 0.7) {
+      for (const depot of allDepots) {
+        const { cx, cy } = worldToGmap(depot.x, depot.y, cw, ch);
+        if (cx < 10 || cx > cw - 10 || cy < 10 || cy > ch - 10) continue;
 
-      // Depot marker badge
-      ctx.fillStyle = '#ea4335';
-      ctx.beginPath();
-      ctx.arc(cx, cy, 7 * gmapZoom, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 8px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('🏢', cx, cy + 3);
-      ctx.textAlign = 'left';
-
-      // Depot label
-      if (gmapZoom >= 0.45) {
-        ctx.fillStyle = '#fca5a5';
         ctx.font = 'bold 10px Roboto, sans-serif';
+        const tw = isCloseZoom ? ctx.measureText(depot.name).width : 0;
+        const box = {
+          x1: cx - 8,
+          y1: cy - 10,
+          x2: cx + (isCloseZoom ? 14 + tw : 8),
+          y2: cy + 10
+        };
+
+        if (hasCollision(box)) continue;
+        placedBoxes.push(box);
+
+        // Depot icon badge
+        ctx.fillStyle = '#ea4335';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 7 * Math.min(1.2, gmapZoom), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏢', cx, cy + 3);
+        ctx.textAlign = 'left';
+
+        if (isCloseZoom) {
+          ctx.fillStyle = '#fca5a5';
+          ctx.font = 'bold 10px Roboto, sans-serif';
+          ctx.shadowColor = '#000000';
+          ctx.shadowBlur = 4;
+          ctx.fillText(depot.name, cx + 11, cy + 3);
+          ctx.shadowBlur = 0;
+        }
+      }
+    }
+
+    // D. Priority 4: Fuel Stations (Fuels) in close zoom
+    if (isCloseZoom) {
+      const allFuels = map.getAllFuels ? map.getAllFuels() : (map.FUELS || []);
+      for (const fuel of allFuels) {
+        const { cx, cy } = worldToGmap(fuel.x, fuel.y, cw, ch);
+        if (cx < 10 || cx > cw - 10 || cy < 10 || cy > ch - 10) continue;
+
+        const label = fuel.brand || fuel.name || 'АЗС';
+        ctx.font = '9px Roboto, sans-serif';
+        const tw = ctx.measureText(label).width;
+        const box = {
+          x1: cx - 6,
+          y1: cy - 8,
+          x2: cx + 12 + tw,
+          y2: cy + 8
+        };
+
+        if (hasCollision(box)) continue;
+        placedBoxes.push(box);
+
+        ctx.fillStyle = '#059669';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = '#6ee7b7';
         ctx.shadowColor = '#000000';
-        ctx.shadowBlur = 4;
-        ctx.fillText(depot.name, cx + 11 * gmapZoom, cy + 3);
+        ctx.shadowBlur = 3;
+        ctx.fillText(label, cx + 8, cy + 3);
         ctx.shadowBlur = 0;
       }
-    });
-
-    // 9. Real OpenStreetMap Cities and Settlements (with LOD)
-    const citiesList = map.CITIES || [];
-    citiesList.forEach(city => {
-      // LOD filter for settlements
-      if (gmapZoom < 0.28) {
-        if (city.population && city.population < 20000 && city.place !== 'city') return;
-      } else if (gmapZoom < 0.65) {
-        if (city.population && city.population < 4000 && city.place === 'village') return;
-      }
-
-      const { cx, cy } = worldToGmap(city.x, city.y, cw, ch);
-      if (cx < -40 || cx > cw + 40 || cy < -40 || cy > ch + 40) return;
-
-      const isCapital = city.nameRu === 'Кишинёв' || city.nameRo === 'Chișinău';
-      const isMajor = isCapital || (city.population && city.population > 30000) || city.place === 'city';
-
-      // City Dot
-      ctx.fillStyle = isCapital ? '#f59e0b' : '#ffffff';
-      ctx.beginPath();
-      ctx.arc(cx, cy, (isCapital ? 6 : isMajor ? 4.5 : 3) * Math.min(1.4, gmapZoom), 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#202124';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // City Label
-      ctx.fillStyle = '#ffffff';
-      ctx.font = isCapital ? '700 13px Roboto, sans-serif' : isMajor ? '600 11px Roboto, sans-serif' : '500 9px Roboto, sans-serif';
-      ctx.shadowColor = '#000000';
-      ctx.shadowBlur = 4;
-      const labelText = city.nameRu || city.name || city.nameRo;
-      ctx.fillText(labelText, cx + 8 * gmapZoom, cy + 4);
-      ctx.shadowBlur = 0;
-    });
+    }
 
     // 10. Selected Dropped Pin (Google Maps Red Marker 📍)
     if (gmapSelectedPin) {
@@ -624,7 +768,20 @@
     ctx.fillText(`${sim.currentSpeedKmh} км/ч`, truckGmap.cx + 12, truckGmap.cy - 6);
   }
 
+  function fitMapToBounds() {
+    gmapPanX = 0;
+    gmapPanY = 0;
+    gmapZoom = 1.0;
+  }
+  if (typeof window !== 'undefined') {
+    window.fitMapToBounds = () => {
+      fitMapToBounds();
+      renderGoogleMaps();
+    };
+  }
+
   function renderWorldMap() {
+    fitMapToBounds();
     renderGoogleMaps();
   }
 
@@ -1703,10 +1860,15 @@
       safeText('#hud-eta-clock', timeStr);
 
       // Update world map bottom ETA bar too
+      const navFooter = document.querySelector('#gmaps-navigation-footer');
+      if (navFooter) navFooter.hidden = false;
       safeText('#gmaps-eta-time', `${estMinutes} мин`);
       safeText('#gmaps-eta-distance', `${distKm} км`);
       safeText('#gmaps-eta-arrival', `Прибытие в ${timeStr}`);
+      safeText('#gmaps-eta-route-name', `Трасса ${roadRef} (${distKm} км) / ${estMinutes} мин`);
     } else {
+      const navFooter = document.querySelector('#gmaps-navigation-footer');
+      if (navFooter) navFooter.hidden = true;
       safeText('#hud-turn-dist', '—');
       safeText('#hud-turn-icon', '—');
       safeText('#hud-nav-dest', 'Нет активного рейса (Биржа грузов)');
