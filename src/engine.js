@@ -92,6 +92,83 @@
       this.truck.cabColor = model.cabColor || '#0c2461';
     }
 
+    // Teleport truck and semi-trailer to exact coordinates
+    teleport(x, y, angle = null, speedKmh = 0) {
+      if (angle === null || angle === undefined) angle = this.truck.angle;
+      this.truck.x = x;
+      this.truck.y = y;
+      this.truck.angle = angle;
+      this.truck.steerAngle = 0;
+
+      // 1 meter = 10 canvas units; speed in px/s
+      const speedPx = (speedKmh * 1000 / 3600) * 10;
+      this.truck.speed = speedPx;
+      this.truck.vx = Math.cos(angle) * speedPx;
+      this.truck.vy = Math.sin(angle) * speedPx;
+
+      if (this.trailer) {
+        const hx = this.truck.x + Math.cos(angle) * HITCH_OFFSET;
+        const hy = this.truck.y + Math.sin(angle) * HITCH_OFFSET;
+        this.trailer.angle = angle;
+        this.trailer.x = hx - Math.cos(angle) * (KINGPIN_TO_AXLE * 0.5);
+        this.trailer.y = hy - Math.sin(angle) * (KINGPIN_TO_AXLE * 0.5);
+        this.trailer.vx = this.truck.vx;
+        this.trailer.vy = this.truck.vy;
+        this.trailer.jackknifed = false;
+        this.trailer.articulationAngle = 0;
+      }
+    }
+
+    // Repair all damage to 0%
+    repairAll() {
+      this.truck.damage = 0;
+      if (this.trailer) {
+        this.trailer.cargoDamage = 0;
+        this.trailer.jackknifed = false;
+      }
+    }
+
+    // Refuel tank to maximum
+    refuelFull() {
+      this.truck.fuel = this.truck.fuelCapacity || 600;
+    }
+
+    // Restore air brake pressure
+    restoreAir() {
+      this.truck.airPressure = 10.0;
+    }
+
+    // Instant boost impulse
+    setImpulseSpeed(speedKmh) {
+      const speedPx = (speedKmh * 1000 / 3600) * 10;
+      this.truck.speed = speedPx;
+      this.truck.vx = Math.cos(this.truck.angle) * speedPx;
+      this.truck.vy = Math.sin(this.truck.angle) * speedPx;
+    }
+
+    // Reverse orientation 180 degrees
+    reverseTruckDirection() {
+      this.teleport(this.truck.x, this.truck.y, this.truck.angle + Math.PI, 0);
+    }
+
+    // Force hitch/unhitch trailer with optional cargo
+    forceHitch(attached, cargo = null) {
+      this.trailer.attached = !!attached;
+      if (attached) {
+        const hx = this.truck.x + Math.cos(this.truck.angle) * HITCH_OFFSET;
+        const hy = this.truck.y + Math.sin(this.truck.angle) * HITCH_OFFSET;
+        this.trailer.angle = this.truck.angle;
+        this.trailer.x = hx - Math.cos(this.truck.angle) * (KINGPIN_TO_AXLE * 0.5);
+        this.trailer.y = hy - Math.sin(this.truck.angle) * (KINGPIN_TO_AXLE * 0.5);
+        this.trailer.jackknifed = false;
+        this.trailer.articulationAngle = 0;
+        if (cargo) {
+          this.trailer.cargo = cargo;
+          this.trailer.cargoWeightKg = cargo.weightKg || 18000;
+        }
+      }
+    }
+
     // Attach or detach trailer at fifth wheel
     toggleHitch() {
       if (this.trailer.attached) {

@@ -7,9 +7,17 @@
       this.ctx = null;
       this.unlocked = false;
       this.running = false;
+      this.muted = false;
       this.lastTickTime = 0;
       this.turnSignalTick = false;
       this.lastBeepTime = 0;
+    }
+
+    setMuted(muted) {
+      this.muted = !!muted;
+      if (this.masterGain && this.ctx) {
+        this.masterGain.gain.setTargetAtTime(this.muted ? 0 : 0.6, this.ctx.currentTime, 0.05);
+      }
     }
 
     init() {
@@ -64,7 +72,7 @@
     }
 
     update(sim, dt) {
-      if (!this.running || !this.ctx || !sim) return;
+      if (!this.running || !this.ctx || !sim || this.muted) return;
       const t = sim.truck;
       const now = this.ctx.currentTime;
 

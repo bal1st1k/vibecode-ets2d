@@ -34,9 +34,10 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n==============================================`);
   console.log(`   MOLDOVA TRUCK SIMULATOR 2D (ETS2 2D)`);
   console.log(`   Сервер запущен: http://127.0.0.1:${PORT}/`);
+  console.log(`   Сеть: http://0.0.0.0:${PORT}/`);
   console.log(`==============================================\n`);
 });

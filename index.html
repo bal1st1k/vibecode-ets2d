@@ -1,43 +1,624 @@
 <!doctype html>
+<!-- MOLDOVA TRUCK SIMULATOR 2D | Made by bal1st1k -->
 <html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>MOLDOVA TRUCK SIMULATOR 2D — Euro Truck 2D</title>
+  <meta name="theme-color" content="#202124">
+  <meta name="description" content="Moldova Truck Simulator 2D — 2D симулятор дальнобоя по Молдове на Canvas 2D + Web Audio API. Главное меню Neon Drift и навигационная карта Google Maps как в ETS 2.">
+  <title>MOLDOVA TRUCK SIMULATOR 2D — Euro Truck 2D (Google Maps Edition)</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Top Navigation Bar (ETS2 Desktop Shell) -->
-  <header class="ets-topbar">
-    <div class="topbar-brand">
-      <span class="flag-icon">🇲🇩</span>
-      <span class="brand-title">MOLDOVA<span>TRUCK</span> 2D</span>
-    </div>
-    <nav class="topbar-nav">
-      <button class="nav-tab active" data-tab="drive">В КАБИНУ</button>
-      <button class="nav-tab" data-tab="jobs">БИРЖА ГРУЗОВ</button>
-      <button class="nav-tab" data-tab="map">КАРТА СТРАНЫ [M]</button>
-      <button class="nav-tab" data-tab="garage">ГАРАЖ</button>
-      <button class="nav-tab" data-tab="dealer">АВТОСАЛОН</button>
-      <button class="nav-tab" data-tab="help">СПРАВКА [?]</button>
-    </nav>
-    <div class="topbar-right">
-      <div class="profile-badge">
-        <span class="driver-name">Водитель 1-го класса</span>
-        <span class="wallet-badge"><span class="coin">₡</span> <span id="wallet-amount">48 500 MDL</span></span>
+  <!-- SVG Symbols Sprite (Neon Drift & Google Maps Style) -->
+  <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4m0 0c5-5 9 5 14 0v10c-5 5-9-5-14 0"/></symbol>
+    <symbol id="i-car" viewBox="0 0 24 24"><path d="m5 8 2-4h10l2 4m-16 3 2-3h14l2 3v7H3zm2 7v3m14-3v3M6 13h2m8 0h2M3 15h18"/></symbol>
+    <symbol id="i-truck" viewBox="0 0 24 24"><path d="M1 3h15v13H1zM16 8h4l3 3v5h-7zM5.5 19a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18.5 19a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/></symbol>
+    <symbol id="i-cargo" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 12v10"/></symbol>
+    <symbol id="i-cup" viewBox="0 0 24 24"><path d="M8 3h8v8a4 4 0 0 1-8 0zm0 2H4v4a4 4 0 0 0 4 4m8-8h4v4a4 4 0 0 1-4 4m-4 2v6m-5 0h10"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 1 1 4 3c-1 .5-1 1-1 2m0 3h.01"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 4 6 8H3v8h3l5 4zm4 4a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
+    <symbol id="i-muted" viewBox="0 0 24 24"><path d="M11 4 6 8H3v8h3l5 4zm5 5 6 6m0-6-6 6"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6m8 4v6"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 19 19 5M5 5h14v14"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="m14 2-9 12h6l-1 8 9-12h-6z"/></symbol>
+    <symbol id="i-shop" viewBox="0 0 24 24"><path d="M4 8h16l1 13H3L4 8zm4 0V6a4 4 0 0 1 8 0v2m-8 5h8"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="m1 6 7-3 8 3 7-3v15l-7 3-8-3-7 3V6zM8 3v15M16 6v15"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+    <symbol id="i-teleport" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4m-3.5-6.5-2.8 2.8m-7.4 7.4-2.8 2.8m13 0-2.8-2.8m-7.4-7.4-2.8-2.8"/></symbol>
+    <symbol id="i-fuel" viewBox="0 0 24 24"><path d="M3 22V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v17M15 10h4l2 3v7a2 2 0 0 1-2 2h-4M3 22h18M6 8h6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-turn-right" viewBox="0 0 24 24"><path d="M7 19V9a4 4 0 0 1 4-4h7m0 0-4-4m4 4-4 4"/></symbol>
+    <symbol id="i-straight" viewBox="0 0 24 24"><path d="M12 19V5m0 0-4 4m4-4 4 4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  </defs></svg>
+
+  <!-- ============================================================== -->
+  <!-- 1. MAIN MENU SHELL (Neon Drift Dashboard Layout)               -->
+  <!-- ============================================================== -->
+  <div id="menu-shell" class="shell">
+    <!-- Left Navigation Rail -->
+    <aside class="rail" aria-label="Навигация">
+      <button class="brand" data-nav="home" aria-label="MTS 2D — главная">M<span>/</span>T</button>
+      <span class="rail-line"></span>
+      <nav class="rail-nav">
+        <button class="rail-button active" data-nav="home" title="Главная (В рейс)"><svg><use href="#i-flag"/></svg><span>В рейс</span></button>
+        <button class="rail-button" data-nav="jobs" title="Биржа грузов"><svg><use href="#i-cargo"/></svg><span>Рейсы</span></button>
+        <button class="rail-button" data-nav="garage" title="Мой автопарк"><svg><use href="#i-truck"/></svg><span>Гараж</span></button>
+        <button class="rail-button" data-nav="dealer" title="Автосалон"><svg><use href="#i-shop"/></svg><span>Салон</span></button>
+        <button class="rail-button rail-gmaps-highlight" data-nav="map" title="Google Maps (Карта Молдовы)"><svg><use href="#i-map"/></svg><span>Google Maps</span></button>
+        <button class="rail-button rail-admin-btn" data-nav="admin" title="Админ-панель (Тесты)"><svg><use href="#i-tool"/></svg><span>Админ 🛠</span></button>
+        <button class="rail-button" data-nav="help" title="Управление и справка"><svg><use href="#i-help"/></svg><span>Помощь</span></button>
+      </nav>
+      <div class="rail-bottom">
+        <span class="vertical-label">MOLDOVA TRUCK 2D</span>
+        <button class="rail-button" data-action="sound" id="sound-button" title="Звук"><svg><use href="#i-volume"/></svg></button>
+        <button class="rail-button" data-nav="admin" title="Админ-панель [F1]"><svg><use href="#i-tool"/></svg></button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Bar -->
+      <header class="topbar">
+        <a class="wordmark" href="#home" data-nav="home">MOLDOVA<span>TRUCK</span><sup>2D</sup></a>
+        <span class="season-badge"><span class="flag-icon">🇲🇩</span> РЕЙСЫ ПО МОЛДОВЕ · ТРАССА M2</span>
+        <div class="topbar-right">
+          <span class="status"><i></i> <span id="topbar-status-text">НА СТОЯНКЕ</span></span>
+          <span class="topbar-divider"></span>
+          <span class="wallet"><span class="coin">₡</span><span data-wallet id="wallet-amount">48 500 MDL</span></span>
+        </div>
+      </header>
+
+      <!-- VIEW: 1. HOME (Hero Dashboard) -->
+      <section id="view-home" class="page active" aria-labelledby="home-title">
+        <div class="hero">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="tiny-square"></span> СИМУЛЯТОР ДАЛЬНОБОЯ 2D · РЕСПУБЛИКА МОЛДОВА</div>
+            <h1 id="home-title">ТВОЙ РЕЙС.<br><span>ТВОЙ ПУТЬ.</span><svg class="hero-arrow"><use href="#i-arrow"/></svg></h1>
+            <p class="hero-description">Реалистичная физика сочленения полуприцепа, пневматические тормоза и затяжные подъёмы трассы Кишинёв — Орхей.<br>Выбирай груз на бирже, садись за руль магистрального тягача и строй транспортную компанию.</p>
+
+            <!-- Active Contract Banner Card -->
+            <div class="contract-card-widget" id="home-contract-card">
+              <div class="contract-widget-header">
+                <span class="badge-dot"></span>
+                <span class="contract-widget-lbl">ТЕКУЩИЙ АКТИВНЫЙ РЕЙС</span>
+                <button class="text-button" data-nav="jobs">СМЕНИТЬ ГРУЗ →</button>
+              </div>
+              <div class="contract-widget-body">
+                <div class="contract-widget-main">
+                  <strong id="home-cargo-title">Молдавское вино (Purcari) · 18 т</strong>
+                  <span id="home-cargo-route">Маршрут: Кишинёв (Trans-Moldova) → Орхей (Logistics Terminal) · 45 км</span>
+                </div>
+                <div class="contract-widget-reward">
+                  <span class="reward-caption">ОПЛАТА ЗА РЕЙС</span>
+                  <strong id="home-cargo-reward">4 800 MDL</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- Action Buttons Row -->
+            <div class="hero-actions">
+              <button class="button button-lime" id="start-drive">В КАБИНУ <svg><use href="#i-arrow"/></svg></button>
+              <button class="button button-outline" data-nav="jobs">БИРЖА ГРУЗОВ</button>
+              <button class="button button-outline" data-nav="map"><svg><use href="#i-map"/></svg> GOOGLE MAPS</button>
+              <button class="button button-outline button-admin-highlight" data-nav="admin"><svg><use href="#i-tool"/></svg> АДМИН-ПАНЕЛЬ</button>
+            </div>
+
+            <!-- Facts Grid -->
+            <div class="hero-facts">
+              <div><strong id="fact-roads">45 KM</strong><span>ТРАССА M2</span></div>
+              <div><strong id="home-truck-count">1/6</strong><span>ТЯГАЧЕЙ</span></div>
+              <div><strong id="fact-cargo">18 T</strong><span>МАКС. ГРУЗ</span></div>
+              <div><strong id="fact-fps">60 FPS</strong><span>ZERO GC</span></div>
+            </div>
+
+            <button class="text-button hero-shop-link" data-nav="dealer">
+              <svg><use href="#i-shop"/></svg> АВТОСАЛОН ТЯГАЧЕЙ / НОВЫЕ ЕВРОПЕЙСКИЕ МОДЕЛИ <svg><use href="#i-arrow"/></svg>
+            </button>
+          </div>
+
+          <!-- Hero Visual: Live Animated Truck & Road Showcase -->
+          <div class="hero-visual" id="hero-visual">
+            <canvas id="preview-canvas" aria-label="Живой вид симулятора"></canvas>
+            <div class="visual-grain"></div>
+            <div class="visual-top">
+              <span class="live-tag"><i></i> LIVE / СИМУЛЯТОР</span>
+              <span class="visual-coords">MOLDOVA / HIGHWAY M2</span>
+            </div>
+            <div class="visual-title">
+              <span id="preview-location">01 / КИШИНЁВ — СЕВЕРНЫЙ ТЕРМИНАЛ</span>
+              <strong id="preview-truck-name">KAMAZ 54901 CONTINENT</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: 2. JOBS (Freight Market) -->
+      <section id="view-jobs" class="page" hidden aria-labelledby="jobs-title">
+        <div class="view-header">
+          <div class="eyebrow"><span class="tiny-square"></span> КОММЕРЧЕСКИЕ КОНТРАКТЫ</div>
+          <h2 id="jobs-title">Биржа грузов<span>.</span></h2>
+          <p class="view-subtitle">Выбирай заказ на перевозку по Молдове. Подцепляй полуприцеп на рампе склада и доставляй в пункт назначения без повреждений.</p>
+        </div>
+        <div class="jobs-grid" id="jobs-grid-container">
+          <!-- Populated dynamically by app.js -->
+        </div>
+      </section>
+
+      <!-- VIEW: 3. GARAGE (My Fleet & Tuning) -->
+      <section id="view-garage" class="page" hidden aria-labelledby="garage-title">
+        <div class="view-header">
+          <div class="eyebrow"><span class="tiny-square"></span> ТВОЙ АВТОПАРК</div>
+          <h2 id="garage-title">Мой гараж<span>.</span></h2>
+          <p class="view-subtitle">Управляй купленными тягачами, настраивай чип-тюнинг двигателя и выбирай машину для следующего рейса.</p>
+        </div>
+        <div class="garage-view-layout">
+          <div class="garage-trucks-col" id="garage-cards-list">
+            <!-- Populated dynamically by app.js -->
+          </div>
+          <div class="garage-inspect-col" id="garage-inspector">
+            <h3 id="inspect-truck-name">КамАЗ 54901 Continent</h3>
+            <p id="inspect-truck-desc">Надёжный магистральный тягач для региональных рейсов.</p>
+            <div class="spec-grid">
+              <div class="spec-box"><span class="spec-lbl">Мощность</span><strong id="inspect-power">450 л.с.</strong></div>
+              <div class="spec-box"><span class="spec-lbl">Крутящий момент</span><strong id="inspect-torque">2060 Н·м</strong></div>
+              <div class="spec-box"><span class="spec-lbl">Топливный бак</span><strong id="inspect-tank">500 л</strong></div>
+              <div class="spec-box"><span class="spec-lbl">Снаряжённая масса</span><strong id="inspect-mass">7 900 кг</strong></div>
+            </div>
+            <div class="garage-actions-row">
+              <button class="button button-lime" id="btn-garage-activate">СЕСТЬ ЗА РУЛЬ</button>
+              <button class="button button-outline" id="btn-garage-tune">ЧИП-ТЮНИНГ (+40 Л.С.) — 15 000 MDL</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: 4. DEALER (Truck Dealership) -->
+      <section id="view-dealer" class="page" hidden aria-labelledby="dealer-title">
+        <div class="view-header">
+          <div class="eyebrow"><span class="tiny-square"></span> НОВЫЕ ТЯГАЧИ</div>
+          <h2 id="dealer-title">Автосалон<span>.</span></h2>
+          <p class="view-subtitle">Покупка европейских и отечественных магистральных тягачей с завода: KamAZ, DAF, MAN, Mercedes-Benz, Scania, Volvo.</p>
+        </div>
+        <div class="dealer-grid-container" id="dealer-grid-container">
+          <!-- Populated dynamically by app.js -->
+        </div>
+      </section>
+
+      <!-- VIEW: 5. MAP (Google Maps Navigation Style ETS 2 Map) -->
+      <section id="view-map" class="page" hidden aria-labelledby="map-title">
+        <div class="view-header">
+          <div class="eyebrow"><span class="tiny-square"></span> НАВИГАЦИОННАЯ СИСТЕМА GPS (ETS 2)</div>
+          <h2 id="map-title">Google Maps · Молдова<span>.</span></h2>
+          <p class="view-subtitle">Интерактивная карта трассы M2 (Кишинёв — Орхей) с панорамированием, масштабированием колесом мыши, АЗС и точками телепортации.</p>
+        </div>
+
+        <!-- Google Maps Main App Container -->
+        <div class="google-maps-app" id="google-maps-app">
+          <!-- Top Google Maps Search Bar & Filter Chips -->
+          <div class="gmaps-top-header">
+            <div class="gmaps-search-box">
+              <div class="gmaps-brand-icon">
+                <span class="g-blue">G</span><span class="g-red">o</span><span class="g-yellow">o</span><span class="g-blue">g</span><span class="g-green">l</span><span class="g-red">e</span>
+                <span class="g-tag">Maps</span>
+              </div>
+              <div class="gmaps-search-inner">
+                <svg class="gmaps-icon-search"><use href="#i-search"/></svg>
+                <input type="text" id="gmaps-search-input" value="Трасса M2 (Кишинёв — Орхей, 45 км)" placeholder="Поиск на карте...">
+                <button class="gmaps-clear-btn" id="btn-gmaps-clear-search">×</button>
+              </div>
+            </div>
+
+            <!-- Quick Filter Chips -->
+            <div class="gmaps-chips-scroll">
+              <button class="gmaps-chip" data-chip="gas">⛽ АЗС Rompetrol / Petrom</button>
+              <button class="gmaps-chip" data-chip="depots">🏢 Терминалы и рампы</button>
+              <button class="gmaps-chip" data-chip="peresecina">🔄 Серпантин Пересечина</button>
+              <button class="gmaps-chip" data-chip="orhei">🏙️ Орхей (Финиш)</button>
+              <button class="gmaps-chip" data-chip="chisinau">🏛️ Кишинёв (Старт)</button>
+              <button class="gmaps-chip gmaps-chip-active" data-chip="truck">🚚 Мой тягач (GPS)</button>
+            </div>
+          </div>
+
+          <!-- Interactive Viewport Canvas -->
+          <div class="gmaps-canvas-viewport" id="gmaps-canvas-viewport">
+            <canvas id="world-map-canvas"></canvas>
+
+            <!-- Floating Controls (Right Side) -->
+            <div class="gmaps-floating-controls">
+              <button class="gmaps-fab-btn" id="btn-gmaps-zoom-in" title="Приблизить (+)">+</button>
+              <button class="gmaps-fab-btn" id="btn-gmaps-zoom-out" title="Отдалить (−)">−</button>
+              <button class="gmaps-fab-btn" id="btn-gmaps-locate" title="Моё местоположение (Центрировать тягач)">
+                <svg><use href="#i-teleport"/></svg>
+              </button>
+              <button class="gmaps-fab-btn" id="btn-gmaps-layer-toggle" title="Переключить слой (Схема / Спутник)">
+                <span id="gmaps-layer-icon">🛰️</span>
+              </button>
+            </div>
+
+            <!-- Clicked Pin Popup Card (Google Maps Style) -->
+            <div class="gmaps-pin-card" id="gmaps-pin-card" hidden>
+              <div class="pin-card-top">
+                <span class="pin-icon-tag">📍</span>
+                <div>
+                  <strong id="pin-card-title">Выбранная локация</strong>
+                  <span id="pin-card-coords">X: 1200 · Y: 3000</span>
+                </div>
+                <button class="pin-card-close" id="btn-pin-card-close">×</button>
+              </div>
+              <p id="pin-card-desc">Кликните «Телепортироваться», чтобы переместить автопоезд в эту точку.</p>
+              <div class="pin-card-actions">
+                <button class="button button-lime button-mini" id="btn-pin-teleport">ТЕЛЕПОРТИРОВАТЬСЯ СЮДА</button>
+                <button class="button button-outline button-mini" id="btn-pin-drive">В КАБИНУ</button>
+              </div>
+            </div>
+
+            <!-- Bottom Left Legend -->
+            <div class="gmaps-bottom-legend">
+              <span class="glegend-item"><i class="gdot-route"></i> Маршрут M2 (45 км)</span>
+              <span class="glegend-item"><i class="gdot-truck"></i> Тягач</span>
+              <span class="glegend-item"><i class="gdot-gas"></i> АЗС</span>
+              <span class="glegend-item"><i class="gdot-depot"></i> Склад</span>
+              <span class="glegend-item"><i class="gdot-river"></i> Река Рэут</span>
+            </div>
+          </div>
+
+          <!-- Bottom Navigation ETA Bar (Google Maps Navigation Style) -->
+          <div class="gmaps-navigation-footer">
+            <div class="gmaps-nav-summary">
+              <div class="gmaps-eta-text" id="gmaps-eta-time">34 мин</div>
+              <div class="gmaps-eta-sub">
+                <span id="gmaps-eta-distance">45 км</span> · 
+                <span id="gmaps-eta-arrival">Прибытие в 22:50</span> · 
+                <span class="traffic-fast">Трасса M2 (Быстрейший маршрут)</span>
+              </div>
+            </div>
+            <div class="gmaps-nav-cta">
+              <button class="button button-lime" id="btn-gmaps-start-driving">
+                В ПУТЬ [В КАБИНУ] <svg><use href="#i-arrow"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: 6. ADMIN PANEL (Тестирование симулятора & Телепорт) -->
+      <section id="view-admin" class="page" hidden aria-labelledby="admin-title">
+        <div class="view-header admin-header-flex">
+          <div>
+            <div class="eyebrow"><span class="tiny-square"></span> РЕЖИМ РАЗРАБОТЧИКА И ТЕСТИРОВАНИЯ</div>
+            <h2 id="admin-title">Админ-панель<span>.</span></h2>
+            <p class="view-subtitle">Инструменты мгновенного перемещения по карте, тестирования физики автопоезда, ремонта и экономики.</p>
+          </div>
+          <div class="admin-top-actions">
+            <button class="button button-lime" id="btn-admin-to-drive">СЕСТЬ В КАБИНУ <svg><use href="#i-arrow"/></svg></button>
+          </div>
+        </div>
+
+        <div class="admin-panel-container">
+          <!-- Notification Status Banner -->
+          <div class="admin-status-bar" id="admin-status-text">
+            Готов к тестированию. Нажмите на карту или выберите готовую точку для мгновенного телепорта.
+          </div>
+
+          <!-- SECTION 1: INTERACTIVE CLICK-TO-TELEPORT MAP -->
+          <div class="admin-block">
+            <div class="admin-block-header">
+              <div class="admin-block-title">
+                <svg><use href="#i-teleport"/></svg>
+                <h3>1. Интерактивная карта телепортации (Google Maps Engine)</h3>
+              </div>
+              <div class="admin-block-meta">
+                <label class="toggle-label">
+                  <input type="checkbox" id="admin-instant-teleport-toggle" checked>
+                  <span>Мгновенный телепорт сразу по клику на карте</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="admin-map-container">
+              <canvas id="admin-map-canvas" width="860" height="280"></canvas>
+              <div class="admin-map-crosshair-info" id="admin-map-info">
+                <span>Кликните в любую точку трассы для перемещения тягача</span>
+              </div>
+            </div>
+
+            <div class="admin-teleport-action-bar">
+              <div class="coord-readout">
+                Выбранная точка: <strong id="admin-selected-coords">X: 1200 · Y: 3000 (Кишинёв)</strong>
+              </div>
+              <button class="button button-lime" id="btn-teleport-target">ТЕЛЕПОРТИРОВАТЬСЯ В ВЫБРАННУЮ ТОЧКУ</button>
+            </div>
+          </div>
+
+          <!-- SECTION 2: 1-CLICK PRESET LOCATIONS -->
+          <div class="admin-block">
+            <div class="admin-block-header">
+              <div class="admin-block-title">
+                <svg><use href="#i-map"/></svg>
+                <h3>2. Готовые точки телепорта (Пресеты)</h3>
+              </div>
+              <span class="admin-note-badge">10 ключевых локаций</span>
+            </div>
+
+            <div class="admin-presets-grid">
+              <button class="admin-preset-btn" data-preset="chisinau-hub">
+                <span class="preset-icon">🏢</span>
+                <span class="preset-title">Кишинёв — Терминал Trans-Moldova</span>
+                <span class="preset-desc">Стартовая база логистики · Южный хаб M2</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="chisinau-center">
+                <span class="preset-icon">🏙️</span>
+                <span class="preset-title">Кишинёв — Calea Orheiului</span>
+                <span class="preset-desc">Северный выезд из столицы на трассу M2</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="centura-chisinau">
+                <span class="preset-icon">🛣️</span>
+                <span class="preset-title">Кишинёв — Кольцевая объездная (Centura)</span>
+                <span class="preset-desc">Развязка со всеми направлениями</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="cricova-cloverleaf">
+                <span class="preset-icon">🍀</span>
+                <span class="preset-title">Крикова — Клеверная развязка M1 / M2</span>
+                <span class="preset-desc">Главный многоуровневый путепровод Молдовы</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="m2-straight">
+                <span class="preset-icon">🏎️</span>
+                <span class="preset-title">Трасса M2 — Скоростная прямая (Мэгдачешть)</span>
+                <span class="preset-desc">Тест разгона 0–90 км/ч и наката</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="m2-serpentine">
+                <span class="preset-icon">🔄</span>
+                <span class="preset-title">Пересечина — Серпантин M2</span>
+                <span class="preset-desc">Тест артикуляции полуприцепа и заноса</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="m2-gas">
+                <span class="preset-icon">⛽</span>
+                <span class="preset-title">Пересечина — АЗС Rompetrol (Стоянка)</span>
+                <span class="preset-desc">Середина маршрута · Заправка и кафе</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="orhei-roundabout">
+                <span class="preset-icon">⭕</span>
+                <span class="preset-title">Орхей — Кольцевая развязка M2 / R14</span>
+                <span class="preset-desc">Круговое движение на въезде в город</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="orhei-hub">
+                <span class="preset-icon">🏬</span>
+                <span class="preset-title">Орхей — Терминал Orhei Logistics</span>
+                <span class="preset-desc">Логистический комплекс в Орхее</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="balti-roundabout">
+                <span class="preset-icon">⭕</span>
+                <span class="preset-title">Бельцы — Кольцевая развязка R14 / M5</span>
+                <span class="preset-desc">Южный въезд в северную столицу</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="balti-hub">
+                <span class="preset-icon">🏭</span>
+                <span class="preset-title">Бельцы — Терминал Agro-Mașini</span>
+                <span class="preset-desc">Северный промышленный терминал</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="m5-autostrada">
+                <span class="preset-icon">🛣️</span>
+                <span class="preset-title">Автомагистраль M5 (Бельцы — Кишинёв)</span>
+                <span class="preset-desc">Скоростное западное шоссе (100 км/ч)</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="r1-straseni">
+                <span class="preset-icon">🌲</span>
+                <span class="preset-title">Трасса R1 — Страшены (Заповедник Кодры)</span>
+                <span class="preset-desc">Шоссе сквозь реликтовые леса</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="ungheni-terminal">
+                <span class="preset-icon">🛃</span>
+                <span class="preset-title">Унгены — Таможенный терминал (Река Прут)</span>
+                <span class="preset-desc">Западный логистический хаб на границе с Румынией</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="m1-dubasari">
+                <span class="preset-icon">🌉</span>
+                <span class="preset-title">Трасса M1 — Дубоссары (Мост через Днестр)</span>
+                <span class="preset-desc">Восточный логистический терминал</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="r2-tiraspol">
+                <span class="preset-icon">🏭</span>
+                <span class="preset-title">Тирасполь — Промышленный терминал</span>
+                <span class="preset-desc">Юго-восточный индустриальный комплекс</span>
+              </button>
+              <button class="admin-preset-btn" data-preset="m3-hincesti">
+                <span class="preset-icon">🍇</span>
+                <span class="preset-title">Хынчешты — Винзавод Vit-Agro</span>
+                <span class="preset-desc">Юго-западный винодельческий центр</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- SECTION 3: EXACT COORDINATES & SPEED -->
+          <div class="admin-block">
+            <div class="admin-block-header">
+              <div class="admin-block-title">
+                <svg><use href="#i-tool"/></svg>
+                <h3>3. Точные координаты и начальная скорость</h3>
+              </div>
+            </div>
+            <div class="admin-coords-grid">
+              <label>Координата X:
+                <input type="number" id="admin-input-x" value="1200" step="50">
+              </label>
+              <label>Координата Y:
+                <input type="number" id="admin-input-y" value="3000" step="50">
+              </label>
+              <label>Направление:
+                <select id="admin-input-angle">
+                  <option value="-1.57">Север (На Орхей / -90°)</option>
+                  <option value="1.57">Юг (На Кишинёв / +90°)</option>
+                  <option value="0">Восток (0°)</option>
+                  <option value="3.14">Запад (180°)</option>
+                </select>
+              </label>
+              <label>Скорость при появлении:
+                <select id="admin-input-speed">
+                  <option value="0">0 км/ч (На ручнике / Стоянка)</option>
+                  <option value="60">60 км/ч (В движении)</option>
+                  <option value="85">85 км/ч (Крейсерская скорость)</option>
+                </select>
+              </label>
+              <div class="admin-coord-btn-cell">
+                <button class="button button-outline" id="btn-teleport-custom">ПЕРЕМЕСТИТЬ ПО КООРДИНАТАМ</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 4: VEHICLE DIAGNOSTICS & CHEATS -->
+          <div class="admin-block">
+            <div class="admin-block-header">
+              <div class="admin-block-title">
+                <svg><use href="#i-truck"/></svg>
+                <h3>4. Состояние тягача и полуприцепа</h3>
+              </div>
+            </div>
+            <div class="admin-tools-grid">
+              <button class="admin-tool-btn" data-action="repair">
+                <span class="at-icon">🔧</span>
+                <div class="at-text"><strong>Мгновенный ремонт</strong><span>Урон тягача и груза = 0%</span></div>
+              </button>
+              <button class="admin-tool-btn" data-action="refuel">
+                <span class="at-icon">⛽</span>
+                <div class="at-text"><strong>Полный бак</strong><span>Заправить 100% топлива</span></div>
+              </button>
+              <button class="admin-tool-btn" data-action="air">
+                <span class="at-icon">💨</span>
+                <div class="at-text"><strong>Накачать воздух</strong><span>Давление в контуре 10.0 bar</span></div>
+              </button>
+              <button class="admin-tool-btn" data-action="toggle-trailer">
+                <span class="at-icon">🚛</span>
+                <div class="at-text"><strong>Сцепка / Отцепка</strong><span>Мгновенно прицепить или отцепить</span></div>
+              </button>
+              <button class="admin-tool-btn" data-action="boost">
+                <span class="at-icon">🚀</span>
+                <div class="at-text"><strong>Импульс +80 км/ч</strong><span>Проверка управляемости на скорости</span></div>
+              </button>
+              <button class="admin-tool-btn" data-action="stop">
+                <span class="at-icon">🛑</span>
+                <div class="at-text"><strong>Экстренная остановка</strong><span>Мгновенный стоп (0 км/ч)</span></div>
+              </button>
+              <button class="admin-tool-btn" data-action="turn-180">
+                <span class="at-icon">🔄</span>
+                <div class="at-text"><strong>Разворот на 180°</strong><span>Повернуть автопоезд назад</span></div>
+              </button>
+              <button class="admin-tool-btn" data-action="change-cargo">
+                <span class="at-icon">📦</span>
+                <div class="at-text"><strong>Сменить тип груза</strong><span>Вино / Яблоки / Масло / Техника</span></div>
+              </button>
+            </div>
+          </div>
+
+          <!-- SECTION 5: ECONOMY & CAREER -->
+          <div class="admin-block">
+            <div class="admin-block-header">
+              <div class="admin-block-title">
+                <svg><use href="#i-bolt"/></svg>
+                <h3>5. Экономика и прогресс карьеры</h3>
+              </div>
+            </div>
+            <div class="admin-tools-grid">
+              <button class="admin-tool-btn" data-action="money-50k">
+                <span class="at-icon">💰</span>
+                <div class="at-text"><strong>+50 000 MDL</strong><span>Пополнить баланс</span></div>
+              </button>
+              <button class="admin-tool-btn" data-action="money-250k">
+                <span class="at-icon">💎</span>
+                <div class="at-text"><strong>+250 000 MDL</strong><span>Хватит на Scania или Volvo</span></div>
+              </button>
+              <button class="admin-tool-btn" data-action="unlock-all-trucks">
+                <span class="at-icon">🏆</span>
+                <div class="at-text"><strong>Открыть все тягачи</strong><span>Добавить все 6 грузовиков в гараж</span></div>
+              </button>
+              <button class="admin-tool-btn" data-action="complete-job">
+                <span class="at-icon">✅</span>
+                <div class="at-text"><strong>Мгновенно сдать груз</strong><span>Завершить текущий рейс с наградой</span></div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: 7. HELP (Controls & Info) -->
+      <section id="view-help" class="page" hidden aria-labelledby="help-title">
+        <div class="view-header">
+          <div class="eyebrow"><span class="tiny-square"></span> СПРАВКА И УПРАВЛЕНИЕ</div>
+          <h2 id="help-title">Как играть<span>.</span></h2>
+          <p class="view-subtitle">Клавиши управления тягачом, навигация Google Maps и правила сдачи грузов.</p>
+        </div>
+        <div class="help-content-card">
+          <table class="help-table">
+            <thead>
+              <tr><th>Клавиша</th><th>Действие</th><th>Описание</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><kbd>W</kbd> / <kbd>↑</kbd></td><td>Газ / Ускорение</td><td>Плавный набор тяги дизеля с учётом массы автопоезда</td></tr>
+              <tr><td><kbd>S</kbd> / <kbd>↓</kbd></td><td>Тормоз</td><td>Пневматические тормоза со стравливанием воздуха</td></tr>
+              <tr><td><kbd>A</kbd>, <kbd>D</kbd> / <kbd>←</kbd>, <kbd>→</kbd></td><td>Руль</td><td>Поворот передних управляемых колёс</td></tr>
+              <tr><td><kbd>R</kbd></td><td>Задний ход (R) / Драйв (D)</td><td>Переключение направления движения со звуком зуммера</td></tr>
+              <tr><td><kbd>Пробел</kbd></td><td>Стояночный тормоз / Сдача груза</td><td>Ручник. На рампе логистического склада — разгрузка!</td></tr>
+              <tr><td><kbd>T</kbd></td><td>Сцепка / Расцепка</td><td>Сочленение полуприцепа с седлом тягача</td></tr>
+              <tr><td><kbd>L</kbd></td><td>Фары</td><td>Выкл → Ближний свет → Дальний свет</td></tr>
+              <tr><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>Поворотники</td><td>Левый / Правый указатель поворота с реле</td></tr>
+              <tr><td><kbd>F</kbd></td><td>Аварийная сигнализация</td><td>Мигание всех указателей поворота</td></tr>
+              <tr><td><kbd>H</kbd></td><td>Пневмогудок</td><td>Громкий пневматический сигнал (Air Horn)</td></tr>
+              <tr><td><kbd>M</kbd></td><td>Google Maps Карта Молдовы</td><td>Открыть интерактивную карту с зумом и поиском</td></tr>
+              <tr><td><kbd>Esc</kbd></td><td>Выход в меню</td><td>Пауза и возврат в главное меню симулятора</td></tr>
+              <tr><td><kbd>F1</kbd> / <kbd>~</kbd></td><td>Админ-панель (Тесты)</td><td>Быстрое открытие админки с телепортом прямо за рулём!</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- 2. SIMULATION VIEWPORT / DRIVE SCREEN                           -->
+  <!-- ============================================================== -->
+  <section id="drive-screen" class="sim-viewport" hidden>
+    <!-- Floating Drive Topbar -->
+    <div class="drive-topbar">
+      <button class="drive-nav-btn" id="btn-back-to-menu" title="Выйти в меню [Esc]">
+        <svg><use href="#i-arrow"/></svg> <span>В МЕНЮ [ESC]</span>
+      </button>
+
+      <button class="drive-nav-btn gmaps-open-btn" id="btn-open-map-drive" title="Открыть Google Maps [M]">
+        <svg><use href="#i-map"/></svg> <span>GOOGLE MAPS [M]</span>
+      </button>
+
+      <div class="drive-job-pill" id="drive-job-indicator">
+        <span class="live-dot"></span>
+        <span id="drive-job-label">КИШИНЁВ → ОРХЕЙ: Молдавское вино (18 т)</span>
+      </div>
+
+      <div class="drive-topbar-right">
+        <button class="drive-nav-btn drive-admin-highlight" id="btn-open-admin-drive" title="Админ-панель [F1]">
+          <svg><use href="#i-tool"/></svg> <span>АДМИН [F1]</span>
+        </button>
+        <button class="drive-icon-btn" id="drive-sound-btn" title="Звук">
+          <svg><use href="#i-volume"/></svg>
+        </button>
       </div>
     </div>
-  </header>
 
-  <!-- Main High-Performance Simulation Canvas -->
-  <main class="sim-viewport">
+    <!-- Main Game Canvas -->
     <canvas id="game-canvas"></canvas>
 
-    <!-- Route Advisor HUD (ETS2 F3 Style) -->
-    <div class="route-advisor" id="route-advisor">
-      <div class="advisor-header">
-        <div class="truck-brand" id="hud-truck-model">VOLVO FH16 <strong>750</strong></div>
-        <div class="job-status-mini" id="hud-cargo-name">Молдавское вино (18 т)</div>
+    <!-- Route Advisor HUD: Google Maps Navigation Style (ETS2 Mod) -->
+    <div class="route-advisor gmaps-advisor-theme" id="route-advisor">
+      <!-- Top Google Green Maneuver Banner -->
+      <div class="gmaps-nav-header">
+        <div class="gmaps-turn-icon" id="hud-turn-icon">⬆</div>
+        <div class="gmaps-turn-text">
+          <span class="turn-dist" id="hud-turn-dist">12 км</span>
+          <span class="turn-road" id="hud-nav-dest">Следуйте по трассе M2 к Орхею</span>
+        </div>
+        <div class="gmaps-road-shield">M2</div>
       </div>
 
       <!-- Telemetry Row: Speedometer & Gear -->
@@ -57,16 +638,15 @@
         </div>
       </div>
 
-      <!-- Navigation / GPS Advisor -->
-      <div class="nav-advisor">
-        <div class="nav-direction">
-          <div class="compass-arrow" id="hud-nav-arrow">▲</div>
+      <!-- Google Maps Bottom Trip Arrival Card -->
+      <div class="gmaps-eta-card">
+        <div class="eta-line-top">
+          <span class="eta-time-val" id="hud-eta-time">32 мин</span>
+          <span class="eta-dist-val" id="hud-nav-dist">45 км</span>
+          <span class="eta-clock-val" id="hud-eta-clock">22:50</span>
         </div>
-        <div class="nav-details">
-          <div class="nav-target" id="hud-nav-dest">Загрузка маршрута...</div>
-          <div class="nav-stats">
-            Осталось: <strong id="hud-nav-dist">—</strong>
-          </div>
+        <div class="advisor-truck-cargo" id="hud-cargo-name">
+          <span id="hud-truck-model">KAMAZ <strong>54901</strong></span> · <span id="hud-cargo-label">Молдавское вино (18 т)</span>
         </div>
       </div>
 
@@ -95,7 +675,7 @@
       </div>
 
       <div class="advisor-footer">
-        <span class="hint-text">Газ/Тормоз [W/S] · Руль [A/D] · Сцепка [T] · Задний ход [R] · Ручник [Space] · Карта [M]</span>
+        <span class="hint-text">Газ [W] · Тормоз [S] · Руль [A/D] · Google Maps [M] · Админ [F1] · Меню [Esc]</span>
       </div>
     </div>
 
@@ -103,121 +683,69 @@
     <div class="delivery-prompt" id="delivery-prompt">
       [РАМПА] Нажмите ПРОБЕЛ для сдачи груза
     </div>
+  </section>
 
-    <!-- In-game Toast Notification -->
-    <div id="toast"></div>
-  </main>
-
-  <!-- OVERLAYS / MODALS FOR ETS2 MENUS -->
-
-  <!-- 1. World Map Modal [M] -->
-  <div class="modal-backdrop" id="modal-map">
-    <div class="modal-window modal-large">
+  <!-- ============================================================== -->
+  <!-- 3. IN-GAME ADMIN MODAL OVERLAY (Accessible via F1 / ~)         -->
+  <!-- ============================================================== -->
+  <div class="modal-backdrop" id="modal-admin" hidden>
+    <div class="modal-window modal-admin-window">
       <div class="modal-header">
-        <h3>КАРТА ДОРОГ МОЛДОВЫ (M2 · R14 · M1 · M5)</h3>
-        <button class="btn-close" data-close="modal-map">×</button>
+        <div class="modal-title-wrap">
+          <svg><use href="#i-tool"/></svg>
+          <h3>АДМИН-ПАНЕЛЬ С ТЕЛЕПОРТОМ [F1 / ~]</h3>
+        </div>
+        <button class="btn-close" id="btn-close-admin-modal" title="Закрыть">×</button>
       </div>
-      <div class="modal-body map-container">
-        <canvas id="world-map-canvas"></canvas>
-        <div class="map-legend">
-          <span><i class="dot-truck"></i> Ваш тягач</span>
-          <span><i class="dot-target"></i> Пункт разгрузки</span>
-          <span><i class="dot-city"></i> Города</span>
-          <span><i class="dot-gas"></i> АЗС</span>
+      <div class="modal-body modal-admin-body">
+        <!-- Interactive Minimap Teleport inside Modal -->
+        <div class="modal-section-title">📍 Кликните на карту Google Maps для мгновенного телепорта:</div>
+        <div class="admin-modal-map-wrap">
+          <canvas id="modal-map-canvas" width="760" height="240"></canvas>
+          <div class="modal-map-label" id="modal-map-coords">Кишинёв — M2 — Орхей</div>
+        </div>
+
+        <div class="modal-section-title">🚀 Быстрый телепорт (Пресеты):</div>
+        <div class="modal-presets-row">
+          <button class="modal-chip" data-preset="chisinau-hub">🏢 Кишинёв (База)</button>
+          <button class="modal-chip" data-preset="chisinau-center">🏙️ Кишинёв (Центр)</button>
+          <button class="modal-chip" data-preset="centura-chisinau">🛣️ Объездная (Centura)</button>
+          <button class="modal-chip" data-preset="cricova-cloverleaf">🍀 Крикова (M1/M2)</button>
+          <button class="modal-chip" data-preset="m2-straight">🏎️ M2 (Мэгдачешть)</button>
+          <button class="modal-chip" data-preset="m2-serpentine">🔄 M2 (Серпантин)</button>
+          <button class="modal-chip" data-preset="m2-gas">⛽ Пересечина (АЗС)</button>
+          <button class="modal-chip" data-preset="orhei-roundabout">⭕ Орхей (Кольцо R14)</button>
+          <button class="modal-chip" data-preset="orhei-hub">🏬 Орхей (Терминал)</button>
+          <button class="modal-chip" data-preset="balti-roundabout">⭕ Бельцы (Кольцо M5)</button>
+          <button class="modal-chip" data-preset="balti-hub">🏭 Бельцы (Терминал)</button>
+          <button class="modal-chip" data-preset="m5-autostrada">🛣️ Автомагистраль M5</button>
+          <button class="modal-chip" data-preset="r1-straseni">🌲 Страшены (Кодры)</button>
+          <button class="modal-chip" data-preset="ungheni-terminal">🛃 Унгены (Таможня / Прут)</button>
+          <button class="modal-chip" data-preset="m1-dubasari">🌉 Дубоссары (Мост Днестр)</button>
+          <button class="modal-chip" data-preset="r2-tiraspol">🏭 Тирасполь (Терминал)</button>
+          <button class="modal-chip" data-preset="m3-hincesti">🍇 Хынчешты (Винзавод)</button>
+        </div>
+
+        <div class="modal-section-title">🛠️ Быстрые тесты тягача:</div>
+        <div class="modal-cheats-row">
+          <button class="button button-outline" data-action="repair">🔧 Ремонт 0%</button>
+          <button class="button button-outline" data-action="refuel">⛽ Полный бак</button>
+          <button class="button button-outline" data-action="air">💨 Воздух 10 bar</button>
+          <button class="button button-outline" data-action="toggle-trailer">🚛 Сцепка</button>
+          <button class="button button-outline" data-action="boost">🚀 +80 км/ч</button>
+          <button class="button button-outline" data-action="turn-180">🔄 Разворот 180°</button>
+          <button class="button button-lime" data-action="complete-job">✅ Сдать груз</button>
+          <button class="button button-outline" data-action="money-50k">💰 +50 000 MDL</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 2. Job Market Modal -->
-  <div class="modal-backdrop" id="modal-jobs">
-    <div class="modal-window">
-      <div class="modal-header">
-        <h3>БИРЖА ГРУЗОВ (FREIGHT MARKET)</h3>
-        <button class="btn-close" data-close="modal-jobs">×</button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-intro">Выберите коммерческий контракт на перевозку груза:</p>
-        <div class="job-list" id="job-list">
-          <!-- Populated by app.js -->
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 3. Garage Modal -->
-  <div class="modal-backdrop" id="modal-garage">
-    <div class="modal-window modal-large">
-      <div class="modal-header">
-        <h3>МОЙ ГАРАЖ И АВТОПАРК</h3>
-        <button class="btn-close" data-close="modal-garage">×</button>
-      </div>
-      <div class="modal-body">
-        <div class="garage-layout">
-          <div class="garage-list" id="garage-trucks-list">
-            <!-- Owned trucks list -->
-          </div>
-          <div class="garage-details" id="garage-details">
-            <h4 id="detail-truck-name">КамАЗ 54901 Continent</h4>
-            <p id="detail-truck-desc">Надёжный тягач для региональных рейсов.</p>
-            <div class="spec-grid">
-              <div class="spec-box"><span class="spec-lbl">Мощность</span><strong id="detail-power">450 л.с.</strong></div>
-              <div class="spec-box"><span class="spec-lbl">Крутящий момент</span><strong id="detail-torque">2060 Н·м</strong></div>
-              <div class="spec-box"><span class="spec-lbl">Топливный бак</span><strong id="detail-tank">500 л</strong></div>
-              <div class="spec-box"><span class="spec-lbl">Масса</span><strong id="detail-mass">7 900 кг</strong></div>
-            </div>
-            <div class="garage-actions">
-              <button class="btn-select-truck" id="btn-activate-truck">СЕСТЬ ЗА РУЛЬ</button>
-              <button class="btn-tune-truck" id="btn-tune-engine">ЧИП-ТЮНИНГ (+40 л.с.) — 15 000 MDL</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 4. Truck Dealership Modal -->
-  <div class="modal-backdrop" id="modal-dealer">
-    <div class="modal-window modal-large">
-      <div class="modal-header">
-        <h3>АВТОСАЛОН ТЯГАЧЕЙ (ДИЛЕРСКИЙ ЦЕНТР)</h3>
-        <button class="btn-close" data-close="modal-dealer">×</button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-intro">Покупка новых европейских и отечественных магистральных тягачей:</p>
-        <div class="dealer-grid" id="dealer-grid">
-          <!-- Populated by app.js -->
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 5. Help / Controls Modal -->
-  <div class="modal-backdrop" id="modal-help">
-    <div class="modal-window">
-      <div class="modal-header">
-        <h3>УПРАВЛЕНИЕ И СПРАВКА ДАЛЬНОБОЙЩИКА</h3>
-        <button class="btn-close" data-close="modal-help">×</button>
-      </div>
-      <div class="modal-body">
-        <table class="help-table">
-          <tr><td><kbd>W</kbd> / <kbd>↑</kbd></td><td>Газ (ускорение)</td></tr>
-          <tr><td><kbd>S</kbd> / <kbd>↓</kbd></td><td>Пневматический тормоз</td></tr>
-          <tr><td><kbd>A</kbd> / <kbd>D</kbd></td><td>Руль (поворот передних колёс)</td></tr>
-          <tr><td><kbd>R</kbd></td><td>Задний ход (R) / Передний ход (D)</td></tr>
-          <tr><td><kbd>Пробел</kbd></td><td>Стояночный тормоз (ручник) / сдача груза на рампе</td></tr>
-          <tr><td><kbd>T</kbd></td><td>Сцепка / расцепка полуприцепа</td></tr>
-          <tr><td><kbd>L</kbd></td><td>Свет фар (Выкл / Ближний / Дальний)</td></tr>
-          <tr><td><kbd>Q</kbd> / <kbd>E</kbd></td><td>Поворотники (Левый / Правый)</td></tr>
-          <tr><td><kbd>F</kbd></td><td>Аварийная сигнализация</td></tr>
-          <tr><td><kbd>H</kbd></td><td>Пневмогудок (Air Horn)</td></tr>
-          <tr><td><kbd>M</kbd></td><td>Карта дорог Молдовы</td></tr>
-        </table>
-      </div>
-    </div>
-  </div>
+  <!-- Toast Notification Alert -->
+  <div id="toast"></div>
 
   <!-- Scripts -->
+  <script src="data/moldova-map.js"></script>
   <script src="src/map.js"></script>
   <script src="src/trucks.js"></script>
   <script src="src/engine.js"></script>
