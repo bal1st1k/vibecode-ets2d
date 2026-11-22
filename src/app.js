@@ -919,22 +919,62 @@
 
         const type = chip.dataset.chip;
         if (type === 'truck') {
-          gmapCenterOn(sim.truck.x, sim.truck.y);
+          if (sim && sim.truck) {
+            gmapCenterOn(sim.truck.x, sim.truck.y);
+            toast('Мой тягач (GPS)');
+          }
         } else if (type === 'gas') {
-          gmapCenterOn(750, -12394); // Rompetrol
-          toast('АЗС Rompetrol на трассе M2');
+          const fuels = (map && map.FUELS) || [];
+          const tx = (sim && sim.truck) ? sim.truck.x : 1200;
+          const ty = (sim && sim.truck) ? sim.truck.y : 3000;
+          let nearest = null;
+          let minDist = Infinity;
+          for (let i = 0; i < fuels.length; i++) {
+            const f = fuels[i];
+            const d = Math.hypot(f.x - tx, f.y - ty);
+            if (d < minDist) {
+              minDist = d;
+              nearest = f;
+            }
+          }
+          if (nearest) {
+            gmapCenterOn(nearest.x, nearest.y);
+            const name = nearest.name || (nearest.brand ? 'АЗС ' + nearest.brand : 'АЗС');
+            toast(`Ближайшая ${name}`);
+          }
         } else if (type === 'depots') {
-          gmapCenterOn(1200, 3000); // Trans-Moldova
-          toast('Логистический хаб Trans-Moldova');
+          const depot = map && map.DEPOTS && (map.DEPOTS.find(d => d.id === 'depot-chisinau-center') || map.DEPOTS[0]);
+          if (depot) {
+            gmapCenterOn(depot.x, depot.y);
+            toast(depot.name || 'Центральный хаб Chișinău');
+          }
         } else if (type === 'peresecina') {
-          gmapCenterOn(-400, -8842);
-          toast('Серпантин Пересечина');
+          const c = map && map.CITIES && map.CITIES.find(city =>
+            city.nameRo === 'Peresecina' ||
+            (city.name && city.name.toLowerCase().includes('пересеч')) ||
+            (city.nameRu && city.nameRu.toLowerCase().includes('пересеч')) ||
+            city.id === 'peresecina'
+          );
+          if (c) {
+            gmapCenterOn(c.x, c.y);
+            toast('Серпантин Пересечина (M2)');
+          }
         } else if (type === 'orhei') {
-          gmapCenterOn(1200, -20684);
-          toast('Город Орхей (Терминал логистики)');
+          const d = map && map.DEPOTS && map.DEPOTS.find(dep => dep.id === 'depot-orhei-central');
+          const c = map && map.CITIES && map.CITIES.find(city => city.nameRo === 'Orhei' || city.nameRu === 'Оргеев');
+          const target = d || c;
+          if (target) {
+            gmapCenterOn(target.x, target.y);
+            toast(target.name || 'Орхей (Терминал логистики)');
+          }
         } else if (type === 'chisinau') {
-          gmapCenterOn(1200, 3000);
-          toast('Город Кишинёв');
+          const c = map && map.CITIES && map.CITIES.find(city => city.nameRo === 'Chișinău' || city.nameRu === 'Кишинёв');
+          const d = map && map.DEPOTS && map.DEPOTS.find(dep => dep.id === 'depot-chisinau-center');
+          const target = c || d;
+          if (target) {
+            gmapCenterOn(target.x, target.y);
+            toast(target.name || 'Город Кишинёв');
+          }
         }
       });
     });
