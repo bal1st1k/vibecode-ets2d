@@ -13,7 +13,8 @@ import path from 'node:path';
 const LOCATIONS = [
   { name: 'Город (Кишинёв)', x: 1200, y: 2950, angle: -Math.PI / 2, speed: 45 },
   { name: 'Трасса M3', x: 1956, y: 4166, angle: -2.33, speed: 70 },
-  { name: 'Развязка (Крикова)', x: 2020, y: -2980, angle: -1.2, speed: 60 }
+  { name: 'Развязка (Крикова)', x: 2020, y: -2980, angle: -1.2, speed: 60 },
+  { name: 'АЗС / Заправка (Rompetrol)', x: 590, y: 4082, angle: -1.57, speed: 25 }
 ];
 
 async function measureLocation(page, loc, targetBrowser) {
