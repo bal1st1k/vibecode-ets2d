@@ -79,7 +79,7 @@ async function measureLocation(page, loc, targetBrowser) {
   }, loc);
 
   // Capture screenshot of the scene with F3 HUD perf overlay visible
-  const ssDir = path.resolve('screenshots');
+  const ssDir = path.resolve('assets/screenshots');
   if (!fs.existsSync(ssDir)) fs.mkdirSync(ssDir, { recursive: true });
   const safeName = loc.name.replace(/[^a-zA-Z0-9а-яА-ЯёЁ]/g, '_');
   await page.screenshot({ path: path.join(ssDir, `perf-${safeName}-${targetBrowser}.png`) });

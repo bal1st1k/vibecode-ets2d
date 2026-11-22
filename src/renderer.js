@@ -450,81 +450,8 @@
     }
 
     // ==============================================================
-    // ENVIRONMENT: TERRAIN, MEADOWS, FORESTS & RIVERS
+    // ROAD SYSTEM HELPERS & GEOMETRY
     // ==============================================================
-
-    _drawTerrain(ctx, map, view) {
-      // Agricultural Fields Grid (subtle field parcels in countryside)
-      const fieldSize = 600;
-      const startX = Math.floor(view.minX / fieldSize) * fieldSize;
-      const startY = Math.floor(view.minY / fieldSize) * fieldSize;
-
-      for (let x = startX; x <= view.maxX; x += fieldSize) {
-        for (let y = startY; y <= view.maxY; y += fieldSize) {
-          const hash = Math.abs(Math.sin(x * 0.0013 + y * 0.0029) * 10000);
-          const variant = Math.floor(hash) % 4;
-          const colors = ['#0f1511', '#121a14', '#111713', '#141c16'];
-
-          ctx.fillStyle = colors[variant];
-          ctx.fillRect(x + 4, y + 4, fieldSize - 8, fieldSize - 8);
-
-          // Subtle field boundary lines
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(x, y, fieldSize, fieldSize);
-        }
-      }
-
-      // Forests (Codru and Orhei National Park)
-      const geo = map.GEOGRAPHY;
-      if (geo && geo.forests) {
-        for (const forest of geo.forests) {
-          const pts = forest.points;
-          if (!pts || pts.length < 3) continue;
-
-          ctx.fillStyle = '#0b160e';
-          ctx.strokeStyle = '#122417';
-          ctx.lineWidth = 6;
-          ctx.beginPath();
-          ctx.moveTo(pts[0].x, pts[0].y);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-        }
-      }
-
-      // Rivers (Nistru, Prut, Răut, Bîc)
-      const rivers = [
-        { pts: geo?.nistruRiver, width: 140, name: 'Râul Nistru' },
-        { pts: geo?.prutRiver, width: 120, name: 'Râul Prut' },
-        { pts: geo?.rautRiver, width: 95, name: 'Râul Răut' },
-        { pts: geo?.bicRiver, width: 85, name: 'Râul Bîc' }
-      ];
-
-      for (const r of rivers) {
-        if (!r.pts || r.pts.length < 2) continue;
-
-        // River base
-        ctx.strokeStyle = '#0d1a24';
-        ctx.lineWidth = r.width + 12;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        r.pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
-        ctx.stroke();
-
-        // Water blue core
-        ctx.strokeStyle = '#142c3d';
-        ctx.lineWidth = r.width;
-        ctx.stroke();
-
-        // Subtle water flow ripple
-        ctx.strokeStyle = 'rgba(74, 144, 226, 0.15)';
-        ctx.lineWidth = r.width * 0.4;
-        ctx.stroke();
-      }
-    }
 
     // Helper: road lanes lookup: oneway trunk/primary = 2, others = 1; two-way = 2; max 3 lanes; links = 1
     getEdgeLanes(edge) {
@@ -724,18 +651,12 @@
           : e.points;
 
         if (trimmed && trimmed.length >= 2) {
-          e._solidMarkings = [];
           e._dashedMarkings = [];
           for (let k = 1; k < lanes; k++) {
             const offset = -halfC + k * 36;
             const linePts = this._offsetPolyline(trimmed, offset);
             if (!linePts || linePts.length < 2) continue;
-
-            if (!e.oneway && lanes >= 4 && k === Math.floor(lanes / 2)) {
-              e._solidMarkings.push(linePts);
-            } else {
-              e._dashedMarkings.push(linePts);
-            }
+            e._dashedMarkings.push(linePts);
           }
         }
       }
@@ -1353,7 +1274,6 @@
       const vMinY = view.minY - 80;
       const vMaxY = view.maxY + 80;
 
-      const tBeforeLoop = performance.now();
       // Layer 1 & 2: Wide semi-transparent green line + narrow bright green line (clipped to view & micro-segments simplified)
       ctx.beginPath();
       let hasLine = false;
@@ -1390,27 +1310,15 @@
         lastY = p2y;
         linePoints++;
       }
-      const tAfterLoop = performance.now();
-      let tAfterStroke1 = tAfterLoop;
-      let tAfterStroke2 = tAfterLoop;
       if (hasLine) {
         ctx.strokeStyle = '#1d693e';
         ctx.lineWidth = 14;
         ctx.stroke();
-        tAfterStroke1 = performance.now();
 
         ctx.strokeStyle = '#22c55e';
         ctx.lineWidth = 4;
         ctx.stroke();
-        tAfterStroke2 = performance.now();
       }
-
-      this._lastLineDetail = {
-        loopMs: tAfterLoop - tBeforeLoop,
-        stroke1Ms: tAfterStroke1 - tAfterLoop,
-        stroke2Ms: tAfterStroke2 - tAfterStroke1,
-        linePoints
-      };
 
       const tLines = performance.now();
 
