@@ -844,7 +844,10 @@
         }
       });
 
-      const distFromTruckKm = (Math.hypot(sim.truck.x - wx, sim.truck.y - wy) * 0.1 / 1000).toFixed(1);
+      const distFromTruckUnits = Math.hypot(sim.truck.x - wx, sim.truck.y - wy);
+      const distFromTruckKm = (typeof map.unitsToRealKm === 'function'
+        ? map.unitsToRealKm(distFromTruckUnits)
+        : (distFromTruckUnits / 1.25 / 1000)).toFixed(1);
 
       gmapSelectedPin = {
         x: wx,
