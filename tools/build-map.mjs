@@ -89,6 +89,65 @@ const ROAD_CLASSES = {
   tertiary_link: { priority: 5, width: 6, defaultSpeed: 40, color: '#64748b', minLod: 0.85 }
 };
 
+export const DEPOT_DEFINITIONS = [
+  {
+    id: 'depot-chisinau-center',
+    name: 'Chișinău Central Hub (Poșta Moldovei Cargo)',
+    cityName: 'Chișinău',
+    lon: 28.8353,
+    lat: 47.0114,
+    type: 'hub'
+  },
+  {
+    id: 'depot-chisinau-cricova',
+    name: 'Cricova Logistics Park (M2 Junction)',
+    cityName: 'Chișinău / Cricova',
+    lon: 28.8363,
+    lat: 47.1127,
+    type: 'warehouse'
+  },
+  {
+    id: 'depot-orhei-central',
+    name: 'Orhei Regional Terminal (M2)',
+    cityName: 'Orhei',
+    lon: 28.8348,
+    lat: 47.4146,
+    type: 'terminal'
+  },
+  {
+    id: 'depot-balti-north',
+    name: 'Bălți North Industrial Logistics (M5 / R6)',
+    cityName: 'Bălți',
+    lon: 28.1838,
+    lat: 48.0562,
+    type: 'hub'
+  },
+  {
+    id: 'depot-ungheni-west',
+    name: 'Ungheni Customs Intermodal Terminal (R1)',
+    cityName: 'Ungheni',
+    lon: 27.7502,
+    lat: 47.3095,
+    type: 'customs'
+  },
+  {
+    id: 'depot-tiraspol-east',
+    name: 'Tiraspol East Freight Logistics (M5)',
+    cityName: 'Tiraspol',
+    lon: 29.8477,
+    lat: 46.7132,
+    type: 'warehouse'
+  },
+  {
+    id: 'depot-cahul-south',
+    name: 'Cahul Agro-Industrial Terminal (M3 / R34)',
+    cityName: 'Cahul',
+    lon: 28.0810,
+    lat: 45.9648,
+    type: 'agro'
+  }
+];
+
 // ==============================================================
 // 2. RAMER-DOUGLAS-PEUCKER POLYLINES SIMPLIFICATION
 // ==============================================================
@@ -172,6 +231,7 @@ async function buildMap() {
   const rawPlaces = [];
   const rawFuels = [];
   const rawIndustrials = [];
+  const processedDepots = DEPOT_DEFINITIONS.map(d => ({ ...d }));
 
   // -------------------------------------------------------------
   // PASS 1: Scan Ways, Collect Needed Nodes & Node POIs
@@ -290,30 +350,93 @@ async function buildMap() {
   // -------------------------------------------------------------
   // 5. GRAPH SEGMENTATION & TOPOLOGY BUILDING
   // -------------------------------------------------------------
-  console.log('\n[Graph] Segmenting ways at junctions into graph edges...');
+  console.log('\n[Graph] Filtering tertiary ways and segmenting into graph edges...');
+
+  const placePts = rawPlaces.map(p => project(p.lon, p.lat, MAP_SCALE));
+  const depotPts = processedDepots.map(d => project(d.lon, d.lat, MAP_SCALE));
+
+  // Filter tertiary ways: keep if length >= 300m OR within 1200m of a settlement
+  const keptWays = [];
+  let droppedTertiary = 0;
+  for (const way of rawWays) {
+    if (way.highway === 'tertiary' || way.highway === 'tertiary_link') {
+      const pts = [];
+      for (const r of way.refs) {
+        const pt = nodeCoords.get(r);
+        if (pt) pts.push(pt);
+      }
+      if (pts.length < 2) continue;
+      let lenPx = 0;
+      for (let i = 1; i < pts.length; i++) {
+        lenPx += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      }
+      const lenM = lenPx / MAP_SCALE;
+
+      let nearPlace = false;
+      const p1 = pts[0];
+      const p2 = pts[pts.length - 1];
+      for (let i = 0; i < placePts.length; i++) {
+        const pl = placePts[i];
+        if (Math.hypot(p1[0] - pl[0], p1[1] - pl[1]) / MAP_SCALE < 1000 ||
+            Math.hypot(p2[0] - pl[0], p2[1] - pl[1]) / MAP_SCALE < 1000) {
+          nearPlace = true;
+          break;
+        }
+      }
+
+      if (MIN_CLASS === 'secondary') {
+        // If minClass is secondary, drop all tertiary except access near depots
+        let nearDepot = false;
+        for (const dp of depotPts) {
+          if (Math.hypot(p1[0] - dp[0], p1[1] - dp[1]) / MAP_SCALE < 800 ||
+              Math.hypot(p2[0] - dp[0], p2[1] - dp[1]) / MAP_SCALE < 800) {
+            nearDepot = true;
+            break;
+          }
+        }
+        if (nearDepot) keptWays.push(way);
+        else droppedTertiary++;
+      } else {
+        // Tertiary: keep only if connects settlements (nearPlace) or length >= 300 real meters
+        if ((nearPlace || lenM >= 300) && (way.ref || lenM >= 300)) {
+          keptWays.push(way);
+        } else {
+          droppedTertiary++;
+        }
+      }
+    } else {
+      keptWays.push(way);
+    }
+  }
+
+  console.log(`[Filter] Kept ${keptWays.length} ways (dropped ${droppedTertiary} short/disconnected tertiary stubs).`);
+
+  // Count usage of nodes among kept ways
+  const keptNodeUsage = new Map();
+  for (const way of keptWays) {
+    for (const r of way.refs) {
+      keptNodeUsage.set(r, (keptNodeUsage.get(r) || 0) + 1);
+    }
+  }
 
   // Identify junction nodes:
-  // A node is an intersection if:
-  // 1. It is the first or last node of ANY way
-  // 2. OR it is referenced by >= 2 ways (degree > 1)
   const isJunction = new Set();
-  for (const way of rawWays) {
+  for (const way of keptWays) {
     if (way.refs.length >= 1) {
       isJunction.add(way.refs[0]);
       isJunction.add(way.refs[way.refs.length - 1]);
     }
     for (const ref of way.refs) {
-      if ((nodeUsage.get(ref) || 0) > 1) {
+      if ((keptNodeUsage.get(ref) || 0) > 1) {
         isJunction.add(ref);
       }
     }
   }
 
-  const graphNodes = new Map(); // nodeId -> { id, x, y, edges: [] }
-  const graphEdges = [];
+  const rawEdges = [];
   let edgeIdCounter = 1;
 
-  for (const way of rawWays) {
+  for (const way of keptWays) {
     const refs = way.refs;
     if (refs.length < 2) continue;
 
@@ -378,29 +501,231 @@ async function buildMap() {
           if (way.tunnel) edgeObj.tunnel = 1;
           if (way.junction) edgeObj.junction = way.junction;
 
-          graphEdges.push(edgeObj);
-
-          // Ensure graph nodes exist
-          const startPt = pts[0];
-          const endPt = pts[pts.length - 1];
-
-          if (!graphNodes.has(startNid)) {
-            graphNodes.set(startNid, { id: startNid, x: startPt[0], y: startPt[1], outEdges: [] });
-          }
-          graphNodes.get(startNid).outEdges.push(edgeId);
-
-          if (!graphNodes.has(endNid)) {
-            graphNodes.set(endNid, { id: endNid, x: endPt[0], y: endPt[1], outEdges: [] });
-          }
-          if (!way.oneway) {
-            graphNodes.get(endNid).outEdges.push(edgeId);
-          }
+          rawEdges.push(edgeObj);
         }
 
         segmentStartIdx = i;
       }
     }
   }
+
+  console.log(`[Graph] Initial segmented edges: ${rawEdges.length}`);
+
+  // -------------------------------------------------------------
+  // 5b. COLLINEAR DEGREE-2 EDGE MERGING
+  // -------------------------------------------------------------
+  console.log('[Graph] Merging continuous road segments at non-intersection nodes...');
+  function mergeDegree2(edgeList) {
+    const edgeMap = new Map();
+    for (const e of edgeList) edgeMap.set(e.id, { ...e });
+
+    let mergedAny = true;
+    let pass = 0;
+
+    while (mergedAny && pass < 40) {
+      mergedAny = false;
+      pass++;
+
+      const adj = new Map();
+      for (const e of edgeMap.values()) {
+        if (!adj.has(e.from)) adj.set(e.from, []);
+        if (!adj.has(e.to)) adj.set(e.to, []);
+        adj.get(e.from).push({ edge: e, end: 'from' });
+        adj.get(e.to).push({ edge: e, end: 'to' });
+      }
+
+      const removedIds = new Set();
+
+      for (const [nid, conn] of adj) {
+        if (conn.length !== 2) continue;
+        const c1 = conn[0];
+        const c2 = conn[1];
+        const e1 = edgeMap.get(c1.edge.id);
+        const e2 = edgeMap.get(c2.edge.id);
+        if (!e1 || !e2 || e1.id === e2.id) continue;
+        if (removedIds.has(e1.id) || removedIds.has(e2.id)) continue;
+
+        // Compatibility checks
+        if (e1.roadClass !== e2.roadClass) continue;
+        if (e1.oneway !== e2.oneway) continue;
+        if (e1.ref && e2.ref && e1.ref !== e2.ref) continue;
+        if ((e1.lanes || 2) !== (e2.lanes || 2)) continue;
+        if (Boolean(e1.tunnel) !== Boolean(e2.tunnel)) continue;
+        if (Boolean(e1.bridge) !== Boolean(e2.bridge)) {
+          const b = e1.bridge ? e1 : e2;
+          if (b.lengthM > 40) continue;
+        }
+
+        let pts1 = [...e1.points];
+        let pts2 = [...e2.points];
+        let newFrom, newTo;
+
+        if (e1.oneway) {
+          if (e1.to === nid && e2.from === nid) {
+            newFrom = e1.from;
+            newTo = e2.to;
+          } else if (e2.to === nid && e1.from === nid) {
+            newFrom = e2.from;
+            newTo = e1.to;
+            pts1 = [...e2.points];
+            pts2 = [...e1.points];
+          } else {
+            continue;
+          }
+        } else {
+          // Two-way road
+          if (e1.to === nid) {
+            newFrom = e1.from;
+          } else {
+            pts1.reverse();
+            newFrom = e1.to;
+          }
+          if (e2.from === nid) {
+            newTo = e2.to;
+          } else {
+            pts2.reverse();
+            newTo = e2.from;
+          }
+        }
+
+        if (newFrom === newTo) continue;
+
+        const mergedPoints = [...pts1, ...pts2.slice(1)];
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of mergedPoints) {
+          minX = Math.min(minX, p[0]);
+          minY = Math.min(minY, p[1]);
+          maxX = Math.max(maxX, p[0]);
+          maxY = Math.max(maxY, p[1]);
+        }
+
+        const mergedEdge = {
+          ...e1,
+          from: newFrom,
+          to: newTo,
+          ref: e1.ref || e2.ref || '',
+          name: e1.name || e2.name || '',
+          bridge: (e1.bridge || e2.bridge) ? 1 : undefined,
+          tunnel: (e1.tunnel || e2.tunnel) ? 1 : undefined,
+          points: mergedPoints,
+          length: Math.round((e1.length + e2.length) * 10) / 10,
+          lengthM: Math.round((e1.lengthM + e2.lengthM) * 10) / 10,
+          bounds: [Math.round(minX), Math.round(minY), Math.round(maxX), Math.round(maxY)]
+        };
+
+        edgeMap.set(e1.id, mergedEdge);
+        edgeMap.delete(e2.id);
+        removedIds.add(e2.id);
+        mergedAny = true;
+      }
+    }
+
+    return Array.from(edgeMap.values());
+  }
+
+  let graphEdges = mergeDegree2(rawEdges);
+  console.log(`[Graph] After degree-2 merging: ${graphEdges.length} edges (merged ${rawEdges.length - graphEdges.length})`);
+
+  // -------------------------------------------------------------
+  // 5c. CONNECTED COMPONENT ANALYSIS (Keep only Main National Highway Network)
+  // -------------------------------------------------------------
+  console.log('[Graph] Filtering disconnected fragments outside main connected component...');
+  const adj = new Map();
+  for (const e of graphEdges) {
+    if (!adj.has(e.from)) adj.set(e.from, new Set());
+    if (!adj.has(e.to)) adj.set(e.to, new Set());
+    adj.get(e.from).add(e.to);
+    adj.get(e.to).add(e.from);
+  }
+
+  // Find node closest to Chișinău anchor (1200, 3000)
+  let chisinauNodeId = null;
+  let chisinauDist = Infinity;
+  for (const [nid, pt] of nodeCoords) {
+    const d = Math.hypot(pt[0] - 1200, pt[1] - 3000);
+    if (d < chisinauDist && adj.has(nid)) {
+      chisinauDist = d;
+      chisinauNodeId = nid;
+    }
+  }
+
+  const visitedNodes = new Set();
+  if (chisinauNodeId) {
+    const queue = [chisinauNodeId];
+    visitedNodes.add(chisinauNodeId);
+    while (queue.length > 0) {
+      const cur = queue.shift();
+      const neighbors = adj.get(cur);
+      if (neighbors) {
+        for (const nxt of neighbors) {
+          if (!visitedNodes.has(nxt)) {
+            visitedNodes.add(nxt);
+            queue.push(nxt);
+          }
+        }
+      }
+    }
+  }
+
+  graphEdges = graphEdges.filter(e => visitedNodes.has(e.from) && visitedNodes.has(e.to));
+  console.log(`[Graph] Main network component: ${graphEdges.length} edges connecting ${visitedNodes.size} nodes.`);
+
+  // -------------------------------------------------------------
+  // 5d. DEAD-END STUB PRUNING
+  // -------------------------------------------------------------
+  const protectedNodes = new Set();
+  for (const [nid, pt] of nodeCoords) {
+    for (const dp of depotPts) {
+      if (Math.hypot(pt[0] - dp[0], pt[1] - dp[1]) / MAP_SCALE < 1500) {
+        protectedNodes.add(nid);
+        break;
+      }
+    }
+    if (protectedNodes.has(nid)) continue;
+    for (const pl of placePts) {
+      if (Math.hypot(pt[0] - pl[0], pt[1] - pl[1]) / MAP_SCALE < 800) {
+        protectedNodes.add(nid);
+        break;
+      }
+    }
+  }
+
+  for (let pass = 0; pass < 3; pass++) {
+    const deg = new Map();
+    for (const e of graphEdges) {
+      deg.set(e.from, (deg.get(e.from) || 0) + 1);
+      deg.set(e.to, (deg.get(e.to) || 0) + 1);
+    }
+    const toRemove = new Set();
+    for (const e of graphEdges) {
+      const d1 = deg.get(e.from) || 0;
+      const d2 = deg.get(e.to) || 0;
+      const isDeadEnd = (d1 === 1 && !protectedNodes.has(e.from)) || (d2 === 1 && !protectedNodes.has(e.to));
+      if (isDeadEnd && e.lengthM < 500 && (e.roadClass === 'tertiary' || e.roadClass === 'tertiary_link' || e.roadClass === 'secondary_link')) {
+        toRemove.add(e.id);
+      }
+    }
+    if (toRemove.size === 0) break;
+    graphEdges = graphEdges.filter(e => !toRemove.has(e.id));
+  }
+
+  // Second merge pass in case pruning exposed new degree-2 nodes
+  graphEdges = mergeDegree2(graphEdges);
+
+  // Rebuild final graphNodes
+  const graphNodes = new Map();
+  for (const e of graphEdges) {
+    const startPt = e.points[0];
+    const endPt = e.points[e.points.length - 1];
+    if (!graphNodes.has(e.from)) graphNodes.set(e.from, { id: e.from, x: startPt[0], y: startPt[1], outEdges: [] });
+    if (!graphNodes.has(e.to)) graphNodes.set(e.to, { id: e.to, x: endPt[0], y: endPt[1], outEdges: [] });
+    graphNodes.get(e.from).outEdges.push(e.id);
+    if (!e.oneway) {
+      graphNodes.get(e.to).outEdges.push(e.id);
+    }
+  }
+
+  console.log(`[Graph built] Final Simplified Graph: ${graphNodes.size} Nodes, ${graphEdges.length} Edges.`);
 
   console.log(`[Graph built] Total Junction Nodes: ${graphNodes.size}, Total Directed/Split Edges: ${graphEdges.length}`);
 
@@ -447,65 +772,6 @@ async function buildMap() {
   }
 
   // Logistics Depots & Terminals
-  const processedDepots = [
-    {
-      id: 'depot-chisinau-center',
-      name: 'Chișinău Central Hub (Poșta Moldovei Cargo)',
-      cityName: 'Chișinău',
-      lon: 28.8353,
-      lat: 47.0114,
-      type: 'hub'
-    },
-    {
-      id: 'depot-chisinau-cricova',
-      name: 'Cricova Logistics Park (M2 Junction)',
-      cityName: 'Chișinău / Cricova',
-      lon: 28.8363,
-      lat: 47.1127,
-      type: 'warehouse'
-    },
-    {
-      id: 'depot-orhei-central',
-      name: 'Orhei Regional Terminal (M2)',
-      cityName: 'Orhei',
-      lon: 28.8348,
-      lat: 47.4146,
-      type: 'terminal'
-    },
-    {
-      id: 'depot-balti-north',
-      name: 'Bălți North Industrial Logistics (M5 / R6)',
-      cityName: 'Bălți',
-      lon: 28.1838,
-      lat: 48.0562,
-      type: 'hub'
-    },
-    {
-      id: 'depot-ungheni-west',
-      name: 'Ungheni Customs Intermodal Terminal (R1)',
-      cityName: 'Ungheni',
-      lon: 27.7502,
-      lat: 47.3095,
-      type: 'customs'
-    },
-    {
-      id: 'depot-tiraspol-east',
-      name: 'Tiraspol East Freight Logistics (M5)',
-      cityName: 'Tiraspol',
-      lon: 29.8477,
-      lat: 46.7132,
-      type: 'warehouse'
-    },
-    {
-      id: 'depot-cahul-south',
-      name: 'Cahul Agro-Industrial Terminal (M3 / R34)',
-      cityName: 'Cahul',
-      lon: 28.0810,
-      lat: 45.9648,
-      type: 'agro'
-    }
-  ];
-
   // Project and snap depots to nearest road nodes
   for (const depot of processedDepots) {
     const [dx, dy] = project(depot.lon, depot.lat, MAP_SCALE);
