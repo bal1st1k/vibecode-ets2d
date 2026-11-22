@@ -291,7 +291,7 @@
       const r = this.trailer;
 
       // 1. Controls processing
-      const throttle = input.throttle || 0;
+      let throttle = input.throttle || 0;
       const brake = input.brake || 0;
       const steer = input.steer || 0; // -1 to 1
 
@@ -332,7 +332,18 @@
       const maxReverseSpeed = (20 / 3.6) * 10; // 20 km/h = 55 px/s
 
       let acceleration = 0;
-      if (input.reverse) {
+      if (t.parkingBrake) {
+        // Parking brake engaged: zero throttle, rapid deceleration to 0, cannot drive
+        throttle = 0;
+        const parkDecel = 400;
+        if (Math.abs(t.speed) > 1) {
+          const decelDelta = Math.min(Math.abs(t.speed), parkDecel * dt);
+          t.speed -= Math.sign(t.speed) * decelDelta;
+        } else {
+          t.speed = 0;
+        }
+        acceleration = 0;
+      } else if (input.reverse) {
         t.gear = -1;
         if (throttle > 0 && t.speed > -maxReverseSpeed) {
           acceleration = -throttle * ((t.powerHp || 480) * 0.1) * massRatio;
@@ -369,15 +380,19 @@
       const rollingResistance = 12 * offroadPenalty;
       const airDrag = 0.0018 * t.speed * t.speed;
 
-      if (Math.abs(t.speed) > 0.5) {
-        acceleration -= Math.sign(t.speed) * (rollingResistance + airDrag);
-      } else if (throttle === 0 && brake === 0) {
-        t.speed = 0;
-      }
+      if (!t.parkingBrake) {
+        if (Math.abs(t.speed) > 0.5) {
+          acceleration -= Math.sign(t.speed) * (rollingResistance + airDrag);
+        } else if (throttle === 0 && brake === 0) {
+          t.speed = 0;
+        }
 
-      t.speed += acceleration * dt;
-      if (input.reverse && t.speed < -maxReverseSpeed) t.speed = -maxReverseSpeed;
-      if (!input.reverse && t.speed > maxForwardSpeed) t.speed = maxForwardSpeed;
+        t.speed += acceleration * dt;
+        if (input.reverse && t.speed < -maxReverseSpeed) t.speed = -maxReverseSpeed;
+        if (!input.reverse && t.speed > maxForwardSpeed) t.speed = maxForwardSpeed;
+      } else {
+        if (Math.abs(t.speed) <= 1) t.speed = 0;
+      }
 
       // 4. Bicycle / Ackermann truck motion
       const angularVelocity = (t.speed / WHEELBASE) * Math.tan(t.steerAngle);

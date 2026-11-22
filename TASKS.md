@@ -19,3 +19,9 @@
 | T-015 | Перенос 4 мостов в map.js и масштабирование RESCALE_S | done | b8dd21b |
 | T-016 | Динамические координаты кнопок навигации Google Maps в app.js | done | 036a3b1 |
 | T-017 | Замена depots[N] на find по ID в renderJobMarket() и тест контрактов | done | 9027251 |
+| T-018 | Торможение и блокировка движения при parkingBrake=true в engine.js | done | 1f93c3f |
+| T-019 | Удаление мертвого метода _drawTerrain и поля _lastLineDetail в renderer.js | in_progress | - |
+| T-020 | Удаление недостижимой ветки разметки lanes>=4 в _ensureEdgeCached | todo | - |
+| T-021 | Обновление scripts test/start и devDependencies в package.json | todo | - |
+| T-022 | Удаление screenshots/ в корне и перенаправление measure-fps в assets/screenshots | todo | - |
+| T-023 | Обновление AGENTS.md (карта файлов, npm test, запреты, правило MAP_SCALE) | todo | - |
