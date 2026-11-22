@@ -771,17 +771,14 @@
       return false;
     }
 
-    _hasBridgesInBounds(minX, minY, maxX, maxY) {
-      const bridges = [
-        { x: 1200, y: -20000, len: 180 },
-        { x: 10500, y: -2700, len: 220 },
-        { x: 14500, y: 5900, len: 240 },
-        { x: -30800, y: 2400, len: 200 }
-      ];
+    _hasBridgesInBounds(minX, minY, maxX, maxY, map) {
+      const bridges = (map && (map.bridges || (map.GEOGRAPHY && map.GEOGRAPHY.bridges))) ||
+                      (root && root.ETSMap && (root.ETSMap.bridges || (root.ETSMap.GEOGRAPHY && root.ETSMap.GEOGRAPHY.bridges))) || [];
       for (let i = 0; i < bridges.length; i++) {
         const b = bridges[i];
-        if (b.x + b.len >= minX && b.x - b.len <= maxX &&
-            b.y + b.len >= minY && b.y - b.len <= maxY) {
+        const len = b.length || b.len || 200;
+        if (b.x + len >= minX && b.x - len <= maxX &&
+            b.y + len >= minY && b.y - len <= maxY) {
           return true;
         }
       }
@@ -868,35 +865,33 @@
       }
     }
 
-    _drawBridgesForTile(tCtx, minX, minY, maxX, maxY) {
-      const bridges = [
-        { x: 1200, y: -20000, angle: -Math.PI / 2, length: 180, width: 150 },
-        { x: 10500, y: -2700, angle: 0, length: 220, width: 140 },
-        { x: 14500, y: 5900, angle: 0.35, length: 240, width: 140 },
-        { x: -30800, y: 2400, angle: 3.14, length: 200, width: 135 }
-      ];
+    _drawBridgesForTile(tCtx, minX, minY, maxX, maxY, map) {
+      const bridges = (map && (map.bridges || (map.GEOGRAPHY && map.GEOGRAPHY.bridges))) ||
+                      (root && root.ETSMap && (root.ETSMap.bridges || (root.ETSMap.GEOGRAPHY && root.ETSMap.GEOGRAPHY.bridges))) || [];
 
       for (let i = 0; i < bridges.length; i++) {
         const br = bridges[i];
-        if (br.x + br.length < minX || br.x - br.length > maxX || br.y + br.length < minY || br.y - br.length > maxY) continue;
+        const len = br.length || br.len || 200;
+        const width = br.width || 140;
+        if (br.x + len < minX || br.x - len > maxX || br.y + len < minY || br.y - len > maxY) continue;
 
         tCtx.save();
         tCtx.translate(br.x, br.y);
-        tCtx.rotate(br.angle);
+        tCtx.rotate(br.angle || 0);
 
         tCtx.fillStyle = '#374151';
-        tCtx.fillRect(-br.length * 0.5 - 15, -br.width * 0.5 - 6, br.length + 30, 6);
-        tCtx.fillRect(-br.length * 0.5 - 15, br.width * 0.5, br.length + 30, 6);
+        tCtx.fillRect(-len * 0.5 - 15, -width * 0.5 - 6, len + 30, 6);
+        tCtx.fillRect(-len * 0.5 - 15, width * 0.5, len + 30, 6);
 
         tCtx.fillStyle = '#94a3b8';
-        tCtx.fillRect(-br.length * 0.5, -br.width * 0.5 - 4, br.length, 3);
-        tCtx.fillRect(-br.length * 0.5, br.width * 0.5 + 1, br.length, 3);
+        tCtx.fillRect(-len * 0.5, -width * 0.5 - 4, len, 3);
+        tCtx.fillRect(-len * 0.5, width * 0.5 + 1, len, 3);
 
         tCtx.setLineDash([]);
         tCtx.fillStyle = '#94a3b8';
-        for (let bx = -br.length * 0.5; bx <= br.length * 0.5; bx += 25) {
-          tCtx.fillRect(bx - 1.5, -br.width * 0.5 - 6, 3, 5);
-          tCtx.fillRect(bx - 1.5, br.width * 0.5 + 1, 3, 5);
+        for (let bx = -len * 0.5; bx <= len * 0.5; bx += 25) {
+          tCtx.fillRect(bx - 1.5, -width * 0.5 - 6, 3, 5);
+          tCtx.fillRect(bx - 1.5, width * 0.5 + 1, 3, 5);
         }
         tCtx.restore();
       }
@@ -913,7 +908,7 @@
 
       const geo = map && map.GEOGRAPHY;
       const hasRivers = this._hasRiversInBounds(tileMinX, tileMinY, tileMaxX, tileMaxY, geo);
-      const hasBridges = this._hasBridgesInBounds(tileMinX, tileMinY, tileMaxX, tileMaxY);
+      const hasBridges = this._hasBridgesInBounds(tileMinX, tileMinY, tileMaxX, tileMaxY, map);
 
       if (tileEdges.length === 0 && !hasRivers && !hasBridges) {
         return { empty: true, tx, ty };
@@ -1109,7 +1104,7 @@
       }
 
       // Bridges inside this tile
-      this._drawBridgesForTile(tCtx, tileMinX, tileMinY, tileMaxX, tileMaxY);
+      this._drawBridgesForTile(tCtx, tileMinX, tileMinY, tileMaxX, tileMaxY, map);
 
       if (metrics) {
         metrics.guardrailsTime = totalGuardTime;
@@ -1586,34 +1581,32 @@
     // ==============================================================
 
     _drawBridges(ctx, map, view) {
-      const bridges = [
-        { x: 1200, y: -20000, angle: -Math.PI / 2, length: 180, width: 150, name: 'Podul peste Răut (M2 Orhei)' },
-        { x: 10500, y: -2700, angle: 0, length: 220, width: 140, name: 'Podul peste Nistru (M1 Dubăsari)' },
-        { x: 14500, y: 5900, angle: 0.35, length: 240, width: 140, name: 'Podul peste Nistru (R2 Gura Bîcului)' },
-        { x: -30800, y: 2400, angle: 3.14, length: 200, width: 135, name: 'Podul peste Prut (R1 Ungheni)' }
-      ];
+      const bridges = (map && (map.bridges || (map.GEOGRAPHY && map.GEOGRAPHY.bridges))) ||
+                      (root && root.ETSMap && (root.ETSMap.bridges || (root.ETSMap.GEOGRAPHY && root.ETSMap.GEOGRAPHY.bridges))) || [];
 
       for (const br of bridges) {
-        if (br.x + br.length < view.minX || br.x - br.length > view.maxX || br.y + br.length < view.minY || br.y - br.length > view.maxY) continue;
+        const len = br.length || br.len || 200;
+        const width = br.width || 140;
+        if (br.x + len < view.minX || br.x - len > view.maxX || br.y + len < view.minY || br.y - len > view.maxY) continue;
 
         ctx.save();
         ctx.translate(br.x, br.y);
-        ctx.rotate(br.angle);
+        ctx.rotate(br.angle || 0);
 
         // Concrete abutments
         ctx.fillStyle = '#374151';
-        ctx.fillRect(-br.length * 0.5 - 15, -br.width * 0.5 - 6, br.length + 30, 6);
-        ctx.fillRect(-br.length * 0.5 - 15, br.width * 0.5, br.length + 30, 6);
+        ctx.fillRect(-len * 0.5 - 15, -width * 0.5 - 6, len + 30, 6);
+        ctx.fillRect(-len * 0.5 - 15, width * 0.5, len + 30, 6);
 
         // Metallic Guardrails (Silver)
         ctx.fillStyle = '#94a3b8';
-        ctx.fillRect(-br.length * 0.5, -br.width * 0.5 - 4, br.length, 3);
-        ctx.fillRect(-br.length * 0.5, br.width * 0.5 + 1, br.length, 3);
+        ctx.fillRect(-len * 0.5, -width * 0.5 - 4, len, 3);
+        ctx.fillRect(-len * 0.5, width * 0.5 + 1, len, 3);
 
         // Vertical bridge barrier posts
-        for (let bx = -br.length * 0.5; bx <= br.length * 0.5; bx += 25) {
-          ctx.fillRect(bx - 1.5, -br.width * 0.5 - 6, 3, 5);
-          ctx.fillRect(bx - 1.5, br.width * 0.5 + 1, 3, 5);
+        for (let bx = -len * 0.5; bx <= len * 0.5; bx += 25) {
+          ctx.fillRect(bx - 1.5, -width * 0.5 - 6, 3, 5);
+          ctx.fillRect(bx - 1.5, width * 0.5 + 1, 3, 5);
         }
 
         ctx.restore();
