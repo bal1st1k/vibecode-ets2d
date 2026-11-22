@@ -26,3 +26,4 @@
 | T-022 | Удаление screenshots/ в корне и перенаправление measure-fps в assets/screenshots | done | c81a0eb |
 | T-023 | Обновление AGENTS.md (карта файлов, npm test, запреты, правило MAP_SCALE) | done | 9c251d4 |
 | T-024 | Оптимизация renderGoogleMaps: кеш маршрута, ресайз канваса, strokeText и батчинг рёбер | done | b5efaf0 |
+| T-025 | Устранение дублей ширины дорог, единая zero-gc сетка рёбер и test-job-market в npm test | done | d0776eb |

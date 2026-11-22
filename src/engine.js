@@ -17,100 +17,10 @@
   const KINGPIN_TO_AXLE = 85;    // ~8.5 m from kingpin to trailer bogie center
   const JACKKNIFE_LIMIT = 1.35;  // ~77 degrees max articulation before collision
 
-  function getEdgeLanes(edge) {
-    if (!edge) return 2;
-    const rc = edge.roadClass || '';
-    if (rc.endsWith('_link')) {
-      return 1;
-    }
-    let lanes = 2;
-    if (edge.oneway) {
-      if (edge.lanes && edge.lanes > 0) lanes = edge.lanes;
-      else if (rc === 'motorway' || rc === 'trunk' || rc === 'primary') lanes = 2;
-      else lanes = 1;
-    } else {
-      if (edge.lanes && edge.lanes > 0) lanes = edge.lanes;
-      else lanes = 2;
-    }
-    return Math.min(3, Math.max(1, lanes));
-  }
-
-  function getRoadWidth(edgeOrClass, maybeLanes, maybeOneway) {
-    let rc, lanes, oneway;
-    if (typeof edgeOrClass === 'object' && edgeOrClass !== null) {
-      rc = edgeOrClass.roadClass || '';
-      lanes = getEdgeLanes(edgeOrClass);
-      oneway = Boolean(edgeOrClass.oneway);
-    } else {
-      rc = edgeOrClass || '';
-      oneway = Boolean(maybeOneway);
-      lanes = maybeLanes || (oneway ? ((rc === 'motorway' || rc === 'trunk' || rc === 'primary') ? 2 : 1) : 2);
-    }
-    if (rc.endsWith('_link')) {
-      return 36;
-    }
-    lanes = Math.min(3, Math.max(1, lanes));
-    const hasShoulder = rc === 'motorway' || rc === 'trunk' || rc === 'primary' || rc === 'secondary';
-    const shoulder = hasShoulder ? 10 : 0;
-    return lanes * 36 + shoulder * 2;
-  }
-
-  class SpatialEdgeGrid {
-    constructor(edges, cellSize = 400) {
-      this.cellSize = cellSize;
-      this.cells = new Map();
-      if (!edges) return;
-      for (let i = 0; i < edges.length; i++) {
-        const e = edges[i];
-        const b = e.bounds;
-        if (!b) continue;
-        const minCx = Math.floor(b[0] / cellSize);
-        const maxCx = Math.floor(b[2] / cellSize);
-        const minCy = Math.floor(b[1] / cellSize);
-        const maxCy = Math.floor(b[3] / cellSize);
-        for (let cx = minCx; cx <= maxCx; cx++) {
-          for (let cy = minCy; cy <= maxCy; cy++) {
-            const key = cx + ',' + cy;
-            let list = this.cells.get(key);
-            if (!list) {
-              list = [];
-              this.cells.set(key, list);
-            }
-            list.push(e);
-          }
-        }
-      }
-    }
-
-    queryRadius(x, y, radius = 250) {
-      const minCx = Math.floor((x - radius) / this.cellSize);
-      const maxCx = Math.floor((x + radius) / this.cellSize);
-      const minCy = Math.floor((y - radius) / this.cellSize);
-      const maxCy = Math.floor((y + radius) / this.cellSize);
-      const seen = new Set();
-      const result = [];
-      for (let cx = minCx; cx <= maxCx; cx++) {
-        for (let cy = minCy; cy <= maxCy; cy++) {
-          const key = cx + ',' + cy;
-          const list = this.cells.get(key);
-          if (list) {
-            for (let i = 0; i < list.length; i++) {
-              const e = list[i];
-              if (!seen.has(e.id)) {
-                seen.add(e.id);
-                result.push(e);
-              }
-            }
-          }
-        }
-      }
-      return result;
-    }
-  }
-
   class TruckSimulation {
     constructor(mapSystem) {
-      this.map = mapSystem;
+      this.map = mapSystem || (typeof globalThis !== 'undefined' && globalThis.ETSMap) || (typeof window !== 'undefined' && window.ETSMap);
+      this._roadCandidatesBuffer = [];
       this.reset();
     }
 
@@ -472,44 +382,40 @@
 
     _checkRoadSurface() {
       const t = this.truck;
-      if (!this.edgeGrid) {
-        const edges = (this.map && this.map.OSM && this.map.OSM.edges) ||
-                      (this.map && this.map.edges) ||
-                      (typeof globalThis !== 'undefined' && globalThis.OSM_MOLDOVA_MAP && globalThis.OSM_MOLDOVA_MAP.edges) ||
-                      [];
-        this.edgeGrid = new SpatialEdgeGrid(edges, 400);
-      }
+      const map = this.map || (typeof globalThis !== 'undefined' && globalThis.ETSMap) || (typeof window !== 'undefined' && window.ETSMap);
+      const grid = (map && (map.spatialGrid || map.edgeGrid));
 
       let onAnyRoad = false;
       let closestRoad = null;
       let minDistance = Infinity;
 
-      // Spatial culling query via bounds grid (radius 120 px around truck)
-      const candidates = this.edgeGrid.queryRadius(t.x, t.y, 120);
-      for (let c = 0; c < candidates.length; c++) {
-        const edge = candidates[c];
-        const pts = edge.points;
-        if (!pts || pts.length < 2) continue;
-        for (let i = 0; i < pts.length - 1; i++) {
-          const x1 = pts[i][0], y1 = pts[i][1];
-          const x2 = pts[i + 1][0], y2 = pts[i + 1][1];
-          const dx = x2 - x1, dy = y2 - y1;
-          const l2 = dx * dx + dy * dy;
-          if (l2 === 0) continue;
-          let proj = ((t.x - x1) * dx + (t.y - y1) * dy) / l2;
-          proj = Math.max(0, Math.min(1, proj));
-          const qx = x1 + proj * dx;
-          const qy = y1 + proj * dy;
-          const dist = Math.hypot(t.x - qx, t.y - qy);
-          if (dist < minDistance) {
-            minDistance = dist;
-            closestRoad = edge;
+      if (grid && typeof grid.queryRadius === 'function') {
+        if (!this._roadCandidatesBuffer) this._roadCandidatesBuffer = [];
+        const candidates = grid.queryRadius(t.x, t.y, 120, this._roadCandidatesBuffer);
+        for (let c = 0; c < candidates.length; c++) {
+          const edge = candidates[c];
+          const pts = edge.points;
+          if (!pts || pts.length < 2) continue;
+          for (let i = 0; i < pts.length - 1; i++) {
+            const x1 = pts[i][0], y1 = pts[i][1];
+            const x2 = pts[i + 1][0], y2 = pts[i + 1][1];
+            const dx = x2 - x1, dy = y2 - y1;
+            const l2 = dx * dx + dy * dy;
+            if (l2 === 0) continue;
+            let proj = ((t.x - x1) * dx + (t.y - y1) * dy) / l2;
+            proj = Math.max(0, Math.min(1, proj));
+            const qx = x1 + proj * dx;
+            const qy = y1 + proj * dy;
+            const dist = Math.hypot(t.x - qx, t.y - qy);
+            if (dist < minDistance) {
+              minDistance = dist;
+              closestRoad = edge;
+            }
           }
         }
       }
 
-      const getW = (this.map && this.map.getRoadWidth) || getRoadWidth;
-      const roadW = closestRoad ? getW(closestRoad) : 60;
+      const roadW = closestRoad ? ((map && map.getRoadWidth) ? map.getRoadWidth(closestRoad) : 60) : 60;
 
       if (closestRoad && minDistance <= (roadW * 0.5 + 15)) {
         onAnyRoad = true;

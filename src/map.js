@@ -332,6 +332,86 @@
     }
   }
 
+  // Unified zero-allocation spatial edge grid for collision, road surface & tile culling queries
+  class SpatialEdgeGrid {
+    constructor(edges, cellSize = 512) {
+      this.cellSize = cellSize || 512;
+      this.cells = new Map();
+      this._qStamp = 0;
+      this._buffer = [];
+      this.built = false;
+      if (edges && edges.length > 0) {
+        this.build(edges);
+      }
+    }
+
+    build(edges) {
+      this.cells.clear();
+      if (!edges) return;
+      for (let i = 0; i < edges.length; i++) {
+        const e = edges[i];
+        const b = e.bounds;
+        if (!b) continue;
+        const minCx = Math.floor(b[0] / this.cellSize);
+        const maxCx = Math.floor(b[2] / this.cellSize);
+        const minCy = Math.floor(b[1] / this.cellSize);
+        const maxCy = Math.floor(b[3] / this.cellSize);
+
+        for (let cx = minCx; cx <= maxCx; cx++) {
+          for (let cy = minCy; cy <= maxCy; cy++) {
+            const key = (cx << 16) | (cy & 0xffff);
+            let list = this.cells.get(key);
+            if (!list) {
+              list = [];
+              this.cells.set(key, list);
+            }
+            list.push(e);
+          }
+        }
+      }
+      this.built = true;
+    }
+
+    queryBounds(minX, minY, maxX, maxY, out) {
+      const result = out || this._buffer;
+      result.length = 0;
+      const stamp = ++this._qStamp;
+      if (this._qStamp >= 0x7fffffff) this._qStamp = 1;
+
+      const minCx = Math.floor(minX / this.cellSize);
+      const maxCx = Math.floor(maxX / this.cellSize);
+      const minCy = Math.floor(minY / this.cellSize);
+      const maxCy = Math.floor(maxY / this.cellSize);
+
+      for (let cx = minCx; cx <= maxCx; cx++) {
+        for (let cy = minCy; cy <= maxCy; cy++) {
+          const list = this.cells.get((cx << 16) | (cy & 0xffff));
+          if (!list) continue;
+          for (let i = 0; i < list.length; i++) {
+            const e = list[i];
+            if (e._qStamp !== stamp) {
+              e._qStamp = stamp;
+              const b = e.bounds;
+              if (b && (b[2] < minX || b[0] > maxX || b[3] < minY || b[1] > maxY)) continue;
+              result.push(e);
+            }
+          }
+        }
+      }
+      return result;
+    }
+
+    queryRadius(x, y, radius = 250, out) {
+      return this.queryBounds(x - radius, y - radius, x + radius, y + radius, out);
+    }
+
+    query(minX, minY, maxX, maxY, out) {
+      return this.queryBounds(minX, minY, maxX, maxY, out);
+    }
+  }
+
+  const spatialGrid = new SpatialEdgeGrid(osmMap ? osmMap.edges : [], 512);
+
   // Fast spatial grid for OSM graph nodes to accelerate nearest node queries
   const nodeSpatialGrid = new Map();
   const NODE_CELL_SIZE = 500;
@@ -719,36 +799,36 @@
         let bestNormal = null;
         let bestAngle = 0;
 
-        if (osmMap.edges) {
-          for (let e = 0; e < osmMap.edges.length; e++) {
-            const edge = osmMap.edges[e];
-            const b = edge.bounds;
-            if (b && (f.x < b[0] - 250 || f.x > b[2] + 250 || f.y < b[1] - 250 || f.y > b[3] + 250)) continue;
-            const pts = edge.points;
-            if (!pts || pts.length < 2) continue;
-            for (let i = 0; i < pts.length - 1; i++) {
-              const x1 = pts[i][0], y1 = pts[i][1];
-              const x2 = pts[i + 1][0], y2 = pts[i + 1][1];
-              const dx = x2 - x1, dy = y2 - y1;
-              const l2 = dx * dx + dy * dy;
-              if (l2 === 0) continue;
-              let t = ((f.x - x1) * dx + (f.y - y1) * dy) / l2;
-              t = Math.max(0, Math.min(1, t));
-              const qx = x1 + t * dx;
-              const qy = y1 + t * dy;
-              const dSq = (f.x - qx) * (f.x - qx) + (f.y - qy) * (f.y - qy);
-              if (dSq < bestDistSq) {
-                bestDistSq = dSq;
-                bestEdge = edge;
-                const L = Math.hypot(dx, dy);
-                const nx = -dy / L;
-                const ny = dx / L;
-                bestAngle = Math.atan2(dy, dx);
-                bestPt = { x: qx, y: qy };
-                const dot = (f.x - qx) * nx + (f.y - qy) * ny;
-                const side = dot < 0 ? -1 : 1;
-                bestNormal = { nx: nx * side, ny: ny * side };
-              }
+        let candidates = spatialGrid.queryRadius(f.x, f.y, 250);
+        if (!candidates || candidates.length === 0) {
+          candidates = spatialGrid.queryRadius(f.x, f.y, 600);
+        }
+        for (let e = 0; e < candidates.length; e++) {
+          const edge = candidates[e];
+          const pts = edge.points;
+          if (!pts || pts.length < 2) continue;
+          for (let i = 0; i < pts.length - 1; i++) {
+            const x1 = pts[i][0], y1 = pts[i][1];
+            const x2 = pts[i + 1][0], y2 = pts[i + 1][1];
+            const dx = x2 - x1, dy = y2 - y1;
+            const l2 = dx * dx + dy * dy;
+            if (l2 === 0) continue;
+            let t = ((f.x - x1) * dx + (f.y - y1) * dy) / l2;
+            t = Math.max(0, Math.min(1, t));
+            const qx = x1 + t * dx;
+            const qy = y1 + t * dy;
+            const dSq = (f.x - qx) * (f.x - qx) + (f.y - qy) * (f.y - qy);
+            if (dSq < bestDistSq) {
+              bestDistSq = dSq;
+              bestEdge = edge;
+              const L = Math.hypot(dx, dy);
+              const nx = -dy / L;
+              const ny = dx / L;
+              bestAngle = Math.atan2(dy, dx);
+              bestPt = { x: qx, y: qy };
+              const dot = (f.x - qx) * nx + (f.y - qy) * ny;
+              const side = dot < 0 ? -1 : 1;
+              bestNormal = { nx: nx * side, ny: ny * side };
             }
           }
         }
@@ -825,6 +905,12 @@
     unitsToRealMeters,
     getEdgeLanes,
     getRoadWidth,
+    spatialGrid,
+    edgeGrid: spatialGrid,
+    SpatialEdgeGrid,
+    RoadSpatialGrid: SpatialEdgeGrid,
+    queryRadius: (x, y, radius, out) => spatialGrid.queryRadius(x, y, radius, out),
+    queryBounds: (minX, minY, maxX, maxY, out) => spatialGrid.queryBounds(minX, minY, maxX, maxY, out),
     junctionNodes,
     OSM: osmMap,
     edges: osmMap ? osmMap.edges : [],

@@ -36,66 +36,6 @@
     };
   }
 
-  class RoadSpatialGrid {
-    constructor(cellSize = 512) {
-      this.cellSize = cellSize;
-      this.cells = new Map();
-    }
-
-    build(edges) {
-      this.cells.clear();
-      if (!edges) return;
-      for (let i = 0; i < edges.length; i++) {
-        const e = edges[i];
-        const b = e.bounds;
-        if (!b) continue;
-        const minCx = Math.floor(b[0] / this.cellSize);
-        const maxCx = Math.floor(b[2] / this.cellSize);
-        const minCy = Math.floor(b[1] / this.cellSize);
-        const maxCy = Math.floor(b[3] / this.cellSize);
-
-        for (let cx = minCx; cx <= maxCx; cx++) {
-          for (let cy = minCy; cy <= maxCy; cy++) {
-            const k = `${cx}:${cy}`;
-            let list = this.cells.get(k);
-            if (!list) {
-              list = [];
-              this.cells.set(k, list);
-            }
-            list.push(e);
-          }
-        }
-      }
-    }
-
-    query(minX, minY, maxX, maxY) {
-      const minCx = Math.floor(minX / this.cellSize);
-      const maxCx = Math.floor(maxX / this.cellSize);
-      const minCy = Math.floor(minY / this.cellSize);
-      const maxCy = Math.floor(maxY / this.cellSize);
-
-      const result = [];
-      const visited = new Set();
-
-      for (let cx = minCx; cx <= maxCx; cx++) {
-        for (let cy = minCy; cy <= maxCy; cy++) {
-          const list = this.cells.get(`${cx}:${cy}`);
-          if (!list) continue;
-          for (let i = 0; i < list.length; i++) {
-            const e = list[i];
-            if (!visited.has(e.id)) {
-              visited.add(e.id);
-              const b = e.bounds;
-              if (b && (b[2] < minX || b[0] > maxX || b[3] < minY || b[1] > maxY)) continue;
-              result.push(e);
-            }
-          }
-        }
-      }
-      return result;
-    }
-  }
-
   class JunctionSpatialGrid {
     constructor(cellSize = 512) {
       this.cellSize = cellSize;
@@ -266,7 +206,8 @@
       this.osmEdges = (typeof root !== 'undefined' && root.OSM_MOLDOVA_MAP) ? root.OSM_MOLDOVA_MAP.edges : null;
 
       // Spatial grid and Tile LRU Cache (Item 1, 2, 3)
-      this.spatialGrid = new RoadSpatialGrid(512);
+      this.spatialGrid = null;
+      this._roadQueryBuffer = [];
       this.junctionGrid = new JunctionSpatialGrid(512);
       this.signGrid = new PointSpatialGrid(512);
       this.poiGrid = new PointSpatialGrid(512);
@@ -309,7 +250,8 @@
       const ctx = this.ctx;
       const t = sim.truck;
       const r = sim.trailer;
-      const map = sim.map;
+      const map = (sim && sim.map) || this.map || (root && root.ETSMap);
+      this.map = map;
 
       if (!this.spatialGridReady) {
         this._initSpatialGrids(map);
@@ -453,46 +395,6 @@
     // ROAD SYSTEM HELPERS & GEOMETRY
     // ==============================================================
 
-    // Helper: road lanes lookup: oneway trunk/primary = 2, others = 1; two-way = 2; max 3 lanes; links = 1
-    getEdgeLanes(edge) {
-      if (!edge) return 2;
-      const rc = edge.roadClass || '';
-      if (rc.endsWith('_link')) {
-        return 1;
-      }
-      let lanes = 2;
-      if (edge.oneway) {
-        if (edge.lanes && edge.lanes > 0) lanes = edge.lanes;
-        else if (rc === 'motorway' || rc === 'trunk' || rc === 'primary') lanes = 2;
-        else lanes = 1;
-      } else {
-        if (edge.lanes && edge.lanes > 0) lanes = edge.lanes;
-        else lanes = 2;
-      }
-      return Math.min(3, Math.max(1, lanes));
-    }
-
-    // Helper: road width calculation: lanes * 36 + shoulders of 10 px each side for trunk/primary/secondary. Links = 36 px (no shoulder).
-    getRoadWidth(edgeOrClass, maybeLanes, maybeOneway) {
-      let rc, lanes, oneway;
-      if (typeof edgeOrClass === 'object' && edgeOrClass !== null) {
-        rc = edgeOrClass.roadClass || '';
-        lanes = this.getEdgeLanes(edgeOrClass);
-        oneway = Boolean(edgeOrClass.oneway);
-      } else {
-        rc = edgeOrClass || '';
-        oneway = Boolean(maybeOneway);
-        lanes = maybeLanes || (oneway ? ((rc === 'motorway' || rc === 'trunk' || rc === 'primary') ? 2 : 1) : 2);
-      }
-      if (rc.endsWith('_link')) {
-        return 36;
-      }
-      lanes = Math.min(3, Math.max(1, lanes));
-      const hasShoulder = rc === 'motorway' || rc === 'trunk' || rc === 'primary' || rc === 'secondary';
-      const shoulder = hasShoulder ? 10 : 0;
-      return lanes * 36 + shoulder * 2;
-    }
-
     _getRoadTier(rc) {
       if (!rc) return 0;
       if (rc === 'motorway' || rc === 'trunk' || rc === 'motorway_link' || rc === 'trunk_link') return 4;
@@ -579,28 +481,29 @@
     // ==============================================================
 
     _initSpatialGrids(map) {
-      const edges = (map && map.OSM && map.OSM.edges) || (map && map.edges) || this.osmEdges || [];
-      if (edges && edges.length > 0) {
-        this.spatialGrid.build(edges);
-        const junctions = (map && map.junctionNodes) || [];
-        this.junctionGrid.build(junctions);
-        if (map && map.ROAD_SIGNS) {
-          this.signGrid.build(map.ROAD_SIGNS);
-        }
-        const pois = (map && map.GEOGRAPHY && map.GEOGRAPHY.pois) || [];
-        if (pois.length > 0) {
-          this.poiGrid.build(pois);
-        }
-        this.spatialGridReady = true;
+      this.map = map || this.map || (root && root.ETSMap);
+      this.spatialGrid = (this.map && (this.map.spatialGrid || this.map.edgeGrid)) ||
+                         (root && root.ETSMap && (root.ETSMap.spatialGrid || root.ETSMap.edgeGrid)) ||
+                         null;
+      const junctions = (this.map && this.map.junctionNodes) || [];
+      this.junctionGrid.build(junctions);
+      if (this.map && this.map.ROAD_SIGNS) {
+        this.signGrid.build(this.map.ROAD_SIGNS);
       }
+      const pois = (this.map && this.map.GEOGRAPHY && this.map.GEOGRAPHY.pois) || [];
+      if (pois.length > 0) {
+        this.poiGrid.build(pois);
+      }
+      this.spatialGridReady = Boolean(this.spatialGrid);
     }
 
     _ensureEdgeCached(e, map) {
       if (e._cached) return;
       e._cached = true;
 
-      const w = (map && map.getRoadWidth ? map.getRoadWidth(e) : this.getRoadWidth(e));
-      const lanes = (map && map.getEdgeLanes ? map.getEdgeLanes(e) : this.getEdgeLanes(e));
+      const mapObj = map || this.map || (root && root.ETSMap);
+      const w = (mapObj && mapObj.getRoadWidth ? mapObj.getRoadWidth(e) : 36);
+      const lanes = (mapObj && mapObj.getEdgeLanes ? mapObj.getEdgeLanes(e) : 2);
       const tier = this._getRoadTier(e.roadClass);
 
       e._w = w;
@@ -824,7 +727,7 @@
       const tileMinY = ty * 512;
       const tileMaxY = (ty + 1) * 512;
 
-      const tileEdges = this.spatialGrid ? this.spatialGrid.query(tileMinX - 60, tileMinY - 60, tileMaxX + 60, tileMaxY + 60) : [];
+      const tileEdges = this.spatialGrid ? this.spatialGrid.query(tileMinX - 60, tileMinY - 60, tileMaxX + 60, tileMaxY + 60, this._roadQueryBuffer) : [];
       const tileJunctions = this.junctionGrid ? this.junctionGrid.query(tileMinX - 60, tileMinY - 60, tileMaxX + 60, tileMaxY + 60) : [];
 
       const geo = map && map.GEOGRAPHY;
@@ -1047,7 +950,7 @@
       const minY = ty * 512;
       const maxY = (ty + 1) * 512;
 
-      const queryEdges = this.spatialGrid ? this.spatialGrid.query(minX - 40, minY - 40, maxX + 40, maxY + 40) : [];
+      const queryEdges = this.spatialGrid ? this.spatialGrid.query(minX - 40, minY - 40, maxX + 40, maxY + 40, this._roadQueryBuffer) : [];
       if (!queryEdges || queryEdges.length === 0) return;
 
       ctx.lineCap = 'round';
@@ -2142,7 +2045,7 @@
 
           // 3. Draw road network in 3000 px surroundings (Spatial Grid & Batched Strokes)
           const nearbyEdges = (this.spatialGrid && this.spatialGridReady)
-            ? this.spatialGrid.query(t.x - worldRadius, t.y - worldRadius, t.x + worldRadius, t.y + worldRadius)
+            ? this.spatialGrid.query(t.x - worldRadius, t.y - worldRadius, t.x + worldRadius, t.y + worldRadius, this._roadQueryBuffer)
             : [];
           if (nearbyEdges && nearbyEdges.length > 0) {
             mCtx.lineCap = 'round';
