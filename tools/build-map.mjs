@@ -28,21 +28,50 @@ const PBF_URL = 'https://download.geofabrik.de/europe/moldova-latest.osm.pbf';
 // 1. PROJECTION & SCALE CONSTANTS
 // ==============================================================
 // Chișinău Geographic Anchor: 47.0105° N, 28.8353° E -> Game (1200, 3000)
-const ORIGIN_LON = 28.8353;
-const ORIGIN_LAT = 47.0105;
-const LAT0_RAD = (ORIGIN_LAT * Math.PI) / 180;
-const R = 6371000; // Earth radius in meters
-const ETS2_SCALE = 10 / 19; // 1:19 ETS 2 Scale (1 real meter ≈ 0.526 game units)
+export const ORIGIN_LON = 28.8353;
+export const ORIGIN_LAT = 47.0105;
+export const LAT0_RAD = (ORIGIN_LAT * Math.PI) / 180;
+export const R = 6371000; // Earth radius in meters
 
-export function project(lon, lat) {
-  const x = 1200 + (lon - ORIGIN_LON) * (Math.PI / 180) * R * Math.cos(LAT0_RAD) * ETS2_SCALE;
-  const y = 3000 - (lat - ORIGIN_LAT) * (Math.PI / 180) * R * ETS2_SCALE;
+function getCliArg(name, defaultValue) {
+  const idx = process.argv.indexOf(name);
+  if (idx !== -1 && process.argv[idx + 1]) {
+    return process.argv[idx + 1].trim();
+  }
+  return defaultValue;
+}
+
+function parseScale(val) {
+  if (!val) return 1.25; // default 1:8 scale (1 real meter = 1.25 px)
+  if (typeof val === 'number') return val;
+  val = String(val).trim();
+  if (val.includes(':')) {
+    const [num, den] = val.split(':').map(Number);
+    if (num > 0 && den > 0) return 10 / (den / num); // e.g. 1:8 -> 10 / 8 = 1.25; 1:19 -> 10 / 19 = 0.5263
+  }
+  if (val.includes('/')) {
+    const [num, den] = val.split('/').map(Number);
+    if (num > 0 && den > 0) return 10 / (den / num);
+  }
+  const n = parseFloat(val);
+  if (!isNaN(n) && n > 0) {
+    return n < 0.5 ? n * 10 : n;
+  }
+  return 1.25;
+}
+
+export const MAP_SCALE = parseScale(getCliArg('--scale', '1:8'));
+export const MIN_CLASS = getCliArg('--min-class', 'tertiary');
+
+export function project(lon, lat, scale = MAP_SCALE) {
+  const x = 1200 + (lon - ORIGIN_LON) * (Math.PI / 180) * R * Math.cos(LAT0_RAD) * scale;
+  const y = 3000 - (lat - ORIGIN_LAT) * (Math.PI / 180) * R * scale;
   return [Math.round(x * 10) / 10, Math.round(y * 10) / 10];
 }
 
-export function unproject(x, y) {
-  const lon = ORIGIN_LON + ((x - 1200) / (ETS2_SCALE * R * Math.cos(LAT0_RAD))) * (180 / Math.PI);
-  const lat = ORIGIN_LAT - ((y - 3000) / (ETS2_SCALE * R)) * (180 / Math.PI);
+export function unproject(x, y, scale = MAP_SCALE) {
+  const lon = ORIGIN_LON + ((x - 1200) / (scale * R * Math.cos(LAT0_RAD))) * (180 / Math.PI);
+  const lat = ORIGIN_LAT - ((y - 3000) / (scale * R)) * (180 / Math.PI);
   return [lon, lat];
 }
 
@@ -338,6 +367,7 @@ async function buildMap() {
             maxspeed: speedLimit,
             oneway: way.oneway,
             length: Math.round(segLen * 10) / 10,
+            lengthM: Math.round((segLen / MAP_SCALE) * 10) / 10,
             points: pts,
             bounds: [Math.round(minX), Math.round(minY), Math.round(maxX), Math.round(maxY)]
           };
@@ -422,62 +452,66 @@ async function buildMap() {
       id: 'depot-chisinau-center',
       name: 'Chișinău Central Hub (Poșta Moldovei Cargo)',
       cityName: 'Chișinău',
-      x: 1200,
-      y: 2950,
+      lon: 28.8353,
+      lat: 47.0114,
       type: 'hub'
     },
     {
       id: 'depot-chisinau-cricova',
       name: 'Cricova Logistics Park (M2 Junction)',
       cityName: 'Chișinău / Cricova',
-      x: 1240,
-      y: -2980,
+      lon: 28.8363,
+      lat: 47.1127,
       type: 'warehouse'
     },
     {
       id: 'depot-orhei-central',
       name: 'Orhei Regional Terminal (M2)',
       cityName: 'Orhei',
-      x: 1180,
-      y: -20650,
+      lon: 28.8348,
+      lat: 47.4146,
       type: 'terminal'
     },
     {
       id: 'depot-balti-north',
       name: 'Bălți North Industrial Logistics (M5 / R6)',
       cityName: 'Bălți',
-      x: -24800,
-      y: -58200,
+      lon: 28.1838,
+      lat: 48.0562,
       type: 'hub'
     },
     {
       id: 'depot-ungheni-west',
       name: 'Ungheni Customs Intermodal Terminal (R1)',
       cityName: 'Ungheni',
-      x: -42100,
-      y: -14500,
+      lon: 27.7502,
+      lat: 47.3095,
       type: 'customs'
     },
     {
       id: 'depot-tiraspol-east',
       name: 'Tiraspol East Freight Logistics (M5)',
       cityName: 'Tiraspol',
-      x: 41600,
-      y: 20400,
+      lon: 29.8477,
+      lat: 46.7132,
       type: 'warehouse'
     },
     {
       id: 'depot-cahul-south',
       name: 'Cahul Agro-Industrial Terminal (M3 / R34)',
       cityName: 'Cahul',
-      x: -28900,
-      y: 64200,
+      lon: 28.0810,
+      lat: 45.9648,
       type: 'agro'
     }
   ];
 
-  // Snap depots to nearest road nodes
+  // Project and snap depots to nearest road nodes
   for (const depot of processedDepots) {
+    const [dx, dy] = project(depot.lon, depot.lat, MAP_SCALE);
+    depot.x = dx;
+    depot.y = dy;
+
     let closestNodeId = null;
     let minDist = Infinity;
     for (const [nid, node] of graphNodes) {
@@ -524,7 +558,10 @@ async function buildMap() {
       title: 'ETS2 2D Real OpenStreetMap Republic of Moldova Road Network',
       source: 'OpenStreetMap contributors (Geofabrik)',
       license: 'ODbL (Open Database License)',
-      scale: '1:19 European ETS2 Scale',
+      scale: Math.abs(MAP_SCALE - 1.25) < 0.001 ? '1:8' : (Math.abs(MAP_SCALE - (10 / 19)) < 0.001 ? '1:19' : `1:${Math.round(10 / MAP_SCALE)}`),
+      mapScale: MAP_SCALE,
+      unitsPerMeter: MAP_SCALE,
+      minClass: MIN_CLASS,
       generatedAt: new Date().toISOString(),
       bounds: [mapMinX, mapMinY, mapMaxX, mapMaxY],
       nodeCount: graphNodes.size,
@@ -587,12 +624,16 @@ export function exportJsFromMapJson() {
   console.log(`✔ Successfully generated ${JS_OUT_PATH}!`);
 }
 
-if (process.argv.includes('--export-js')) {
-  exportJsFromMapJson();
-  process.exit(0);
-}
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 
-buildMap().catch(err => {
-  console.error('[build-map] ERROR:', err);
-  process.exit(1);
-});
+if (isMain) {
+  if (process.argv.includes('--export-js')) {
+    exportJsFromMapJson();
+    process.exit(0);
+  }
+
+  buildMap().catch(err => {
+    console.error('[build-map] ERROR:', err);
+    process.exit(1);
+  });
+}

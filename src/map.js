@@ -2,12 +2,14 @@
 (function (root) {
   'use strict';
 
-  // ETS2 Standard European Scale: 1:19
-  // 1 km in real world ≈ 1000m / 19 ≈ 52.63 in-game meters
-  // Coordinate scale: 1 meter = 10 canvas units -> 1 real km ≈ 526 canvas units
-  const ETS2_SCALE = 19;
-  const UNITS_PER_METER = 10;
-  const realKmToUnits = realKm => (realKm * 1000 / ETS2_SCALE) * UNITS_PER_METER;
+  // Coordinate scale: MAP_SCALE px per 1 real meter
+  // In 1:8 scale, 1 real meter = 1.25 canvas units (1 real km = 1250 px)
+  const MAP_SCALE = (typeof OSM_MOLDOVA_MAP !== 'undefined' && OSM_MOLDOVA_MAP?.meta?.mapScale) || 1.25;
+  const UNITS_PER_METER = MAP_SCALE;
+  const ETS2_SCALE = Math.round(10 / MAP_SCALE); // 8 for 1:8, 19 for 1:19
+  const realKmToUnits = realKm => realKm * 1000 * MAP_SCALE;
+  const unitsToRealKm = units => (units / MAP_SCALE) / 1000;
+  const unitsToRealMeters = units => units / MAP_SCALE;
 
   // Road lanes lookup: oneway default trunk/primary = 2, others = 1; two-way default = 2; max 3 lanes; links = 1
   function getEdgeLanes(edge) {
@@ -396,10 +398,13 @@
           cur = from;
         }
         const totalLength = dist.get(endNodeId);
-        // Estimate minutes assuming average 75 km/h (1 km ≈ 526 game units)
-        const km = totalLength / 526.3;
+        let totalMeters = 0;
+        for (const e of pathEdges) {
+          totalMeters += (typeof e.lengthM === 'number' ? e.lengthM : (e.length / MAP_SCALE));
+        }
+        const km = totalMeters / 1000;
         const estMinutes = Math.max(1, Math.round((km / 75) * 60));
-        return { found: true, totalLength, totalDistKm: km, totalEstMinutes: estMinutes, edges: pathEdges, polyline };
+        return { found: true, totalLength, totalLengthM: totalMeters, totalDistKm: km, totalEstMinutes: estMinutes, edges: pathEdges, polyline };
       }
 
       if (cost > dist.get(node)) continue;
@@ -773,8 +778,12 @@
   initMapObjects();
 
   const MapSystem = {
+    MAP_SCALE,
+    UNITS_PER_METER,
     ETS2_SCALE,
     realKmToUnits,
+    unitsToRealKm,
+    unitsToRealMeters,
     getEdgeLanes,
     getRoadWidth,
     junctionNodes,

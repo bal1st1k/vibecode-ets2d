@@ -1084,17 +1084,34 @@
     if (depots.length < 2) return;
 
     const contracts = [
-      { cargo: map.CARGO_CATALOG[0], origin: depots[0], target: depots[1], distKm: 45, reward: 4800 }, // Chișinău -> Orhei
-      { cargo: map.CARGO_CATALOG[3] || map.CARGO_CATALOG[0], origin: depots[0], target: depots[2] || depots[1], distKm: 125, reward: 9200 }, // Chișinău -> Bălți
-      { cargo: map.CARGO_CATALOG[4] || map.CARGO_CATALOG[0], origin: depots[3] || depots[0], target: depots[0], distKm: 105, reward: 7800 }, // Ungheni -> Chișinău
-      { cargo: map.CARGO_CATALOG[2] || map.CARGO_CATALOG[0], origin: depots[2] || depots[0], target: depots[5] || depots[1], distKm: 160, reward: 11500 }, // Bălți -> Hîncești
-      { cargo: map.CARGO_CATALOG[1] || map.CARGO_CATALOG[0], origin: depots[1], target: depots[3] || depots[0], distKm: 85, reward: 6400 }, // Orhei -> Ungheni
-      { cargo: map.CARGO_CATALOG[5] || map.CARGO_CATALOG[1] || map.CARGO_CATALOG[0], origin: depots[4] || depots[0], target: depots[1], distKm: 110, reward: 8100 }, // Tiraspol -> Orhei
-      { cargo: map.CARGO_CATALOG[0], origin: depots[5] || depots[0], target: depots[2] || depots[1], distKm: 155, reward: 11200 }, // Hîncești -> Bălți
-      { cargo: map.CARGO_CATALOG[3] || map.CARGO_CATALOG[0], origin: depots[2] || depots[1], target: depots[0], distKm: 125, reward: 9500 } // Bălți -> Chișinău
+      { cargo: map.CARGO_CATALOG[0], origin: depots[0], target: depots[1] }, // Chișinău -> Orhei
+      { cargo: map.CARGO_CATALOG[3] || map.CARGO_CATALOG[0], origin: depots[0], target: depots[2] || depots[1] }, // Chișinău -> Bălți
+      { cargo: map.CARGO_CATALOG[4] || map.CARGO_CATALOG[0], origin: depots[3] || depots[0], target: depots[0] }, // Ungheni -> Chișinău
+      { cargo: map.CARGO_CATALOG[2] || map.CARGO_CATALOG[0], origin: depots[2] || depots[0], target: depots[5] || depots[1] }, // Bălți -> Hîncești
+      { cargo: map.CARGO_CATALOG[1] || map.CARGO_CATALOG[0], origin: depots[1], target: depots[3] || depots[0] }, // Orhei -> Ungheni
+      { cargo: map.CARGO_CATALOG[5] || map.CARGO_CATALOG[1] || map.CARGO_CATALOG[0], origin: depots[4] || depots[0], target: depots[1] }, // Tiraspol -> Orhei
+      { cargo: map.CARGO_CATALOG[0], origin: depots[5] || depots[0], target: depots[2] || depots[1] }, // Hîncești -> Bălți
+      { cargo: map.CARGO_CATALOG[3] || map.CARGO_CATALOG[0], origin: depots[2] || depots[1], target: depots[0] } // Bălți -> Chișinău
     ];
 
+    const MAP_SCALE = (map && map.MAP_SCALE) || 1.25;
+
     contracts.forEach((item, index) => {
+      // Calculate road distance in meters (from A* route lengthM if connected, else Euclidean / MAP_SCALE)
+      let distMeters = 0;
+      if (item.origin.nearestNodeId && item.target.nearestNodeId && map.findRoute) {
+        const r = map.findRoute(item.origin.nearestNodeId, item.target.nearestNodeId);
+        if (r && r.found && r.totalLengthM) distMeters = r.totalLengthM;
+      }
+      if (!distMeters) {
+        distMeters = Math.hypot(item.target.x - item.origin.x, item.target.y - item.origin.y) / MAP_SCALE;
+      }
+      const distKm = Math.max(5, Math.round(distMeters / 1000));
+      const valPerKm = item.cargo.valuePerKm || 34;
+      const reward = Math.round(distKm * valPerKm + 3200);
+      item.distKm = distKm;
+      item.reward = reward;
+
       const isCurrent = profile.activeJob && profile.activeJob.cargo.id === item.cargo.id && profile.activeJob.targetCityName === item.target.cityName;
       const card = document.createElement('div');
       card.className = `job-card ${isCurrent ? 'active-job-card' : ''}`;
@@ -1937,15 +1954,18 @@
           if (bestDistSq > 300 * 300) {
             sim._lastRouteCalcTime = 0; // Trigger reroute next tick if off-route
           }
+          const MAP_SCALE = (map && map.MAP_SCALE) || 1.25;
           let remDist = Math.hypot(poly[bestSeg + 1][0] - bestX, poly[bestSeg + 1][1] - bestY);
           for (let i = bestSeg + 1; i < poly.length - 1; i++) {
             remDist += Math.hypot(poly[i + 1][0] - poly[i][0], poly[i + 1][1] - poly[i][1]);
           }
-          const km = remDist / 526.3;
+          const remMeters = remDist / MAP_SCALE;
+          const km = remMeters / 1000;
           distKm = km.toFixed(1);
           estMinutes = Math.max(1, Math.round((km / 75) * 60));
         } else {
-          const fallbackKm = Math.max(0.1, (Math.hypot(target.x - t.x, target.y - t.y) / 526.3));
+          const fallbackMeters = (Math.hypot(target.x - t.x, target.y - t.y)) / ((map && map.MAP_SCALE) || 1.25);
+          const fallbackKm = Math.max(0.1, fallbackMeters / 1000);
           distKm = fallbackKm.toFixed(1);
           estMinutes = Math.max(1, Math.round((fallbackKm / 75) * 60));
         }

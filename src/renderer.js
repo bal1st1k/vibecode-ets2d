@@ -1531,9 +1531,11 @@
         ctx.stroke();
 
         // Floating turn distance badge above turn point
-        const distText = turnDist < 1000
-          ? `${Math.round(turnDist * 0.1)} м`
-          : `${(turnDist / 526.3).toFixed(1)} км`;
+        const MAP_SCALE = (sim && sim.map && sim.map.MAP_SCALE) || 1.25;
+        const turnMeters = turnDist / MAP_SCALE;
+        const distText = turnMeters < 1000
+          ? `${Math.round(turnMeters)} м`
+          : `${(turnMeters / 1000).toFixed(1)} км`;
         const icon = turnAngleDiff > 0.3 ? '↱' : (turnAngleDiff < -0.3 ? '↰' : '⬆');
         const badgeLabel = `${icon} ${distText}`;
 
