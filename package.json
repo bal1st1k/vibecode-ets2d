@@ -2,12 +2,12 @@
   "name": "ets2-2d",
   "version": "1.0.0",
   "description": "2D симулятор дальнобоя по Молдове на чистом Canvas 2D + Web Audio API с дизайном главного меню в стиле **Neon Drift** и встроенной **админ-панелью для тестирования**. Работает полностью офлайн, без интернета, без внешних библиотек и оптимизирован для слабых ноутбуков.",
-  "main": "index.js",
   "directories": {
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.cjs",
+    "test": "node tests/test-ets2.cjs && node tests/test-full-lifecycle.cjs && node tests/test-osm-routes.cjs"
   },
   "repository": {
     "type": "git",
@@ -21,7 +21,7 @@
     "url": "https://github.com/bal1st1k/vibecode-ets2d/issues"
   },
   "homepage": "https://github.com/bal1st1k/vibecode-ets2d#readme",
-  "dependencies": {
+  "devDependencies": {
     "osm-pbf-parser": "^2.3.0",
     "playwright": "^1.65.1"
   }

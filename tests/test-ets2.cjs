@@ -329,3 +329,6 @@ check('styles.css contains Google Maps Navigation colors and rules', () => {
   assert.match(css, /\.gmaps-nav-header\s*\{/);
   assert.match(css, /\.gmaps-floating-controls\s*\{/);
 });
+
+// 5. Job Market Contracts Verification
+require('./test-job-market.cjs');
