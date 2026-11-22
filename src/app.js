@@ -101,6 +101,7 @@
     window.exitDrive = exitDrive;
     window.navigate = navigate;
     window.renderDealer = renderDealer;
+    window.renderJobMarket = renderJobMarket;
   }
 
   function updateWalletDisplays() {
@@ -1127,15 +1128,14 @@
     if (depots.length < 2) return;
 
     const contracts = [
-      { cargo: map.CARGO_CATALOG[0], origin: depots[0], target: depots[1] }, // Chișinău -> Orhei
-      { cargo: map.CARGO_CATALOG[3] || map.CARGO_CATALOG[0], origin: depots[0], target: depots[2] || depots[1] }, // Chișinău -> Bălți
-      { cargo: map.CARGO_CATALOG[4] || map.CARGO_CATALOG[0], origin: depots[3] || depots[0], target: depots[0] }, // Ungheni -> Chișinău
-      { cargo: map.CARGO_CATALOG[2] || map.CARGO_CATALOG[0], origin: depots[2] || depots[0], target: depots[5] || depots[1] }, // Bălți -> Hîncești
-      { cargo: map.CARGO_CATALOG[1] || map.CARGO_CATALOG[0], origin: depots[1], target: depots[3] || depots[0] }, // Orhei -> Ungheni
-      { cargo: map.CARGO_CATALOG[5] || map.CARGO_CATALOG[1] || map.CARGO_CATALOG[0], origin: depots[4] || depots[0], target: depots[1] }, // Tiraspol -> Orhei
-      { cargo: map.CARGO_CATALOG[0], origin: depots[5] || depots[0], target: depots[2] || depots[1] }, // Hîncești -> Bălți
-      { cargo: map.CARGO_CATALOG[3] || map.CARGO_CATALOG[0], origin: depots[2] || depots[1], target: depots[0] } // Bălți -> Chișinău
+      { cargo: map.CARGO_CATALOG[0], origin: depots.find(d => d.id === 'depot-chisinau-center') || depots[0], target: depots.find(d => d.id === 'depot-orhei-central') || depots[1] }, // Кишинёв -> Орхей
+      { cargo: map.CARGO_CATALOG[3] || map.CARGO_CATALOG[0], origin: depots.find(d => d.id === 'depot-chisinau-center') || depots[0], target: depots.find(d => d.id === 'depot-balti-north') || depots[1] }, // Кишинёв -> Бельцы
+      { cargo: map.CARGO_CATALOG[4] || map.CARGO_CATALOG[0], origin: depots.find(d => d.id === 'depot-ungheni-west') || depots[0], target: depots.find(d => d.id === 'depot-chisinau-center') || depots[1] }, // Унгены -> Кишинёв
+      { cargo: map.CARGO_CATALOG[2] || map.CARGO_CATALOG[0], origin: depots.find(d => d.id === 'depot-balti-north') || depots[0], target: depots.find(d => d.id === 'depot-cahul-south') || depots[1] }, // Бельцы -> Кагул
+      { cargo: map.CARGO_CATALOG[1] || map.CARGO_CATALOG[0], origin: depots.find(d => d.id === 'depot-orhei-central') || depots[0], target: depots.find(d => d.id === 'depot-ungheni-west') || depots[1] }, // Орхей -> Унгены
+      { cargo: map.CARGO_CATALOG[5] || map.CARGO_CATALOG[1] || map.CARGO_CATALOG[0], origin: depots.find(d => d.id === 'depot-tiraspol-east') || depots[0], target: depots.find(d => d.id === 'depot-orhei-central') || depots[1] } // Тирасполь -> Орхей
     ];
+    if (typeof window !== 'undefined') window.jobContracts = contracts;
 
     const MAP_SCALE = (map && map.MAP_SCALE) || 1.25;
 
@@ -2072,9 +2072,9 @@
         id: 'starter-job',
         cargo: map.CARGO_CATALOG[0],
         originCity: 'Chișinău',
-        originDepot: depots[0],
+        originDepot: depots.find(d => d.id === 'depot-chisinau-center') || depots[0],
         targetCityName: 'Orhei',
-        targetDepot: depots[1],
+        targetDepot: depots.find(d => d.id === 'depot-orhei-central') || depots[2] || depots[1],
         rewardMdl: 4800,
         distKm: 45
       };
