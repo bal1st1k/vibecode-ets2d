@@ -18,3 +18,4 @@
 | T-014 | Замена distFromTruckKm в app.js на map.unitsToRealKm | done | a36b69a |
 | T-015 | Перенос 4 мостов в map.js и масштабирование RESCALE_S | done | b8dd21b |
 | T-016 | Динамические координаты кнопок навигации Google Maps в app.js | done | 036a3b1 |
+| T-017 | Замена depots[N] на find по ID в renderJobMarket() и тест контрактов | done | 9027251 |
