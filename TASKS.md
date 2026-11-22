@@ -25,3 +25,4 @@
 | T-021 | Обновление scripts test/start и devDependencies в package.json | done | beec4f1 |
 | T-022 | Удаление screenshots/ в корне и перенаправление measure-fps в assets/screenshots | done | c81a0eb |
 | T-023 | Обновление AGENTS.md (карта файлов, npm test, запреты, правило MAP_SCALE) | done | 9c251d4 |
+| T-024 | Оптимизация renderGoogleMaps: кеш маршрута, ресайз канваса, strokeText и батчинг рёбер | done | b5efaf0 |
