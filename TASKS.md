@@ -14,3 +14,5 @@
 | T-010 | Пересборка moldova-map.json и адаптация A*, физики, HUD и наград на lengthM | done | db7c53d |
 | T-011 | Прогон тестов, замер FPS и скриншоты Кишинёв/M3/Развязка (расстояние >= 2 тягачей) | done | 18c5d1a |
 | T-012 | Обновление README (время пути на 90 км/ч) и CHANGELOG | done | 5a016f1 |
+| T-013 | Замена distTraveledMeters в engine.js на map.unitsToRealMeters | done | 5daba86 |
+| T-014 | Замена distFromTruckKm в app.js на map.unitsToRealKm | done | a36b69a |
