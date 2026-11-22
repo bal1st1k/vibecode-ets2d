@@ -1329,7 +1329,7 @@
   // ADMIN PANEL & TELEPORT SUITE
   // ==============================================================
 
-  const TELEPORT_PRESETS = {
+  const TELEPORT_PRESETS_RAW = {
     'chisinau-hub': {
       name: 'Кишинёв: База Trans-Moldova',
       x: 750, y: 3150, angle: -1.57, speed: 0,
@@ -1421,6 +1421,16 @@
       desc: 'Юго-западный винодельческий центр'
     }
   };
+
+  const S_SCALE = ((typeof ETSMap !== 'undefined' && ETSMap.MAP_SCALE) || 1.25) / (10 / 19);
+  const TELEPORT_PRESETS = {};
+  for (const [k, p] of Object.entries(TELEPORT_PRESETS_RAW)) {
+    TELEPORT_PRESETS[k] = {
+      ...p,
+      x: Math.round((1200 + (p.x - 1200) * S_SCALE) * 10) / 10,
+      y: Math.round((3000 + (p.y - 3000) * S_SCALE) * 10) / 10
+    };
+  }
 
   function executeTeleport(x, y, angle = null, speedKmh = 0, label = '') {
     sim.teleport(x, y, angle, speedKmh);

@@ -222,6 +222,36 @@
     { x: -2100, y: 20400, w: 200, h: 140, color: '#1c2226', label: 'Combinatul Vinicol Hîncești' }
   ];
 
+  // Rescale GEOGRAPHY and CITY_BLOCKS from 1:19 coordinate space to current MAP_SCALE
+  const RESCALE_S = MAP_SCALE / (10 / 19);
+  if (Math.abs(RESCALE_S - 1.0) > 0.01) {
+    const rescaleCoord = pt => ({
+      ...pt,
+      x: Math.round((1200 + (pt.x - 1200) * RESCALE_S) * 10) / 10,
+      y: Math.round((3000 + (pt.y - 3000) * RESCALE_S) * 10) / 10
+    });
+    for (let i = 0; i < CITIES.length; i++) {
+      const c = rescaleCoord(CITIES[i]);
+      CITIES[i].x = c.x;
+      CITIES[i].y = c.y;
+    }
+    GEOGRAPHY.moldovaBorder = GEOGRAPHY.moldovaBorder.map(rescaleCoord);
+    GEOGRAPHY.nistruRiver = GEOGRAPHY.nistruRiver.map(rescaleCoord);
+    GEOGRAPHY.prutRiver = GEOGRAPHY.prutRiver.map(rescaleCoord);
+    GEOGRAPHY.rautRiver = GEOGRAPHY.rautRiver.map(rescaleCoord);
+    GEOGRAPHY.bicRiver = GEOGRAPHY.bicRiver.map(rescaleCoord);
+    for (const f of GEOGRAPHY.forests) {
+      f.points = f.points.map(rescaleCoord);
+    }
+    for (const b of CITY_BLOCKS) {
+      const c = rescaleCoord(b);
+      b.x = c.x;
+      b.y = c.y;
+      b.w = Math.round(b.w * RESCALE_S);
+      b.h = Math.round(b.h * RESCALE_S);
+    }
+  }
+
   // ==============================================================
   // REAL OPENSTREETMAP ROAD NETWORK GRAPH & A* ROUTING
   // ==============================================================

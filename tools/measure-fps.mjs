@@ -20,7 +20,11 @@ const LOCATIONS = [
 async function measureLocation(page, loc, targetBrowser) {
   // Teleport and let scene settle
   await page.evaluate(({ x, y, angle, speed, name }) => {
-    window.executeTeleport(x, y, angle, speed, name);
+    const mapScale = (window.ETSMap && window.ETSMap.MAP_SCALE) || 1.25;
+    const S = mapScale / (10 / 19);
+    const rx = 1200 + (x - 1200) * S;
+    const ry = 3000 + (y - 3000) * S;
+    window.executeTeleport(rx, ry, angle, speed, name);
   }, loc);
 
   await page.waitForTimeout(1500);

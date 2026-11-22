@@ -69,6 +69,8 @@ function findNearestNode(x, y) {
 }
 
 function findRoute(startNode, endNode) {
+  startNode = String(startNode);
+  endNode = String(endNode);
   const t0 = performance.now();
   const dist = new Map();
   const prev = new Map();
@@ -110,9 +112,12 @@ function findRoute(startNode, endNode) {
   return null;
 }
 
-const nChi = findNearestNode(1200, 2950);
-const nOrh = findNearestNode(1180, -20650);
-const nBalti = findNearestNode(-24800, -58200);
+const mapScale = (osmData.meta && osmData.meta.mapScale) || 1.25;
+const S = mapScale / (10 / 19);
+
+const nChi = findNearestNode(1200 + (1200 - 1200) * S, 3000 + (2950 - 3000) * S);
+const nOrh = findNearestNode(1200 + (1180 - 1200) * S, 3000 + (-20650 - 3000) * S);
+const nBalti = findNearestNode(1200 + (-24800 - 1200) * S, 3000 + (-58200 - 3000) * S);
 
 console.log('====================================================');
 console.log('   OSM REAL ROAD NETWORK ROUTING VERIFICATION      ');
@@ -120,9 +125,10 @@ console.log('====================================================\n');
 
 // 1. Chișinău to Orhei
 const rOrhei = findRoute(nChi, nOrh);
+const kmOrhei = rOrhei ? rOrhei.edges.reduce((s, e) => s + (e.lengthM || (e.length / mapScale)), 0) / 1000 : 0;
 console.log('ROUTE 1: Chișinău -> Orhei (Traseul M2 / R6)');
 console.log(`- Time to compute: ${rOrhei.dt.toFixed(2)} ms`);
-console.log(`- Total length: ${rOrhei.totalLength.toFixed(1)} units (${(rOrhei.totalLength / 526.3).toFixed(1)} km)`);
+console.log(`- Total length: ${rOrhei.totalLength.toFixed(1)} units (${kmOrhei.toFixed(1)} km)`);
 console.log(`- Road edges count: ${rOrhei.edges.length}`);
 console.log(`- Polyline points: ${rOrhei.polyline.length}`);
 const orheiNames = [...new Set(rOrhei.edges.map(e => e.ref || e.name || e.roadClass).filter(Boolean))];
@@ -131,9 +137,10 @@ console.log('');
 
 // 2. Chișinău to Bălți
 const rBalti = findRoute(nChi, nBalti);
+const kmBalti = rBalti ? rBalti.edges.reduce((s, e) => s + (e.lengthM || (e.length / mapScale)), 0) / 1000 : 0;
 console.log('ROUTE 2: Chișinău -> Bălți (Traseul M5 / R6)');
 console.log(`- Time to compute: ${rBalti.dt.toFixed(2)} ms`);
-console.log(`- Total length: ${rBalti.totalLength.toFixed(1)} units (${(rBalti.totalLength / 526.3).toFixed(1)} km)`);
+console.log(`- Total length: ${rBalti.totalLength.toFixed(1)} units (${kmBalti.toFixed(1)} km)`);
 console.log(`- Road edges count: ${rBalti.edges.length}`);
 console.log(`- Polyline points: ${rBalti.polyline.length}`);
 const baltiNames = [...new Set(rBalti.edges.map(e => e.ref || e.name || e.roadClass).filter(Boolean))];
