@@ -465,8 +465,8 @@
       let closestRoad = null;
       let minDistance = Infinity;
 
-      // Spatial culling query via bounds grid
-      const candidates = this.edgeGrid.queryRadius(t.x, t.y, 250);
+      // Spatial culling query via bounds grid (radius 120 px around truck)
+      const candidates = this.edgeGrid.queryRadius(t.x, t.y, 120);
       for (let c = 0; c < candidates.length; c++) {
         const edge = candidates[c];
         const pts = edge.points;

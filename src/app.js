@@ -5,9 +5,15 @@
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
 
+  const elCache = new Map();
   const safeText = (sel, text) => {
-    const el = typeof sel === 'string' ? $(sel) : sel;
-    if (el) el.textContent = text;
+    let el = typeof sel === 'string' ? elCache.get(sel) : sel;
+    if (!el && typeof sel === 'string') {
+      el = document.querySelector(sel);
+      if (el) elCache.set(sel, el);
+    }
+    const str = String(text);
+    if (el && el.textContent !== str) el.textContent = str;
   };
   const safeHtml = (sel, html) => {
     const el = typeof sel === 'string' ? $(sel) : sel;
@@ -1146,21 +1152,22 @@
   }
 
   // Delivery / Cargo Drop check
+  let cachedDeliveryPromptEl = null;
   function checkDepotDelivery() {
     if (!profile.activeJob || !profile.activeJob.targetDepot || typeof profile.activeJob.targetDepot.x !== 'number') return;
     const t = sim.truck;
     const target = profile.activeJob.targetDepot;
     const dist = Math.hypot(t.x - target.x, t.y - target.y);
 
-    const promptEl = $('#delivery-prompt');
-    if (!promptEl) return;
+    if (!cachedDeliveryPromptEl) cachedDeliveryPromptEl = $('#delivery-prompt');
+    if (!cachedDeliveryPromptEl) return;
     if (dist < 120 && Math.abs(sim.currentSpeedKmh) < 5) {
-      promptEl.classList.add('active');
+      if (!cachedDeliveryPromptEl.classList.contains('active')) cachedDeliveryPromptEl.classList.add('active');
       if (sim.truck.parkingBrake) {
         completeJobSuccess();
       }
-    } else {
-      promptEl.classList.remove('active');
+    } else if (cachedDeliveryPromptEl.classList.contains('active')) {
+      cachedDeliveryPromptEl.classList.remove('active');
     }
   }
 
@@ -1400,6 +1407,8 @@
 
   function executeTeleport(x, y, angle = null, speedKmh = 0, label = '') {
     sim.teleport(x, y, angle, speedKmh);
+    sim.currentRoute = null;
+    sim._lastRouteCalcTime = 0;
     const msg = `📍 Телепортирован в ${label || `X: ${Math.round(x)}, Y: ${Math.round(y)}`}${speedKmh > 0 ? ` (${speedKmh} км/ч)` : ''}`;
     toast(msg);
     safeText('#admin-status-text', msg);
@@ -1720,6 +1729,14 @@
       return;
     }
 
+    // Hotkey: F3 toggles Performance Profiler Overlay
+    if (e.code === 'F3') {
+      e.preventDefault();
+      renderer.showPerf = !renderer.showPerf;
+      toast(`Отладка FPS (F3): ${renderer.showPerf ? 'ВКЛ' : 'ВЫКЛ'}`);
+      return;
+    }
+
     // Hotkey: M opens Google Maps Navigation
     if (e.code === 'KeyM') {
       e.preventDefault();
@@ -1797,72 +1814,167 @@
     }
   });
 
-  // HUD Update with Google Maps Navigation Theme
+  // HUD Update with Google Maps Navigation Theme (Throttled to 20Hz to prevent DOM reflow thrashing)
+  let lastHudUpdateMs = 0;
   function updateHUD() {
+    const nowMs = performance.now();
+    if (nowMs - lastHudUpdateMs < 50) return;
+    lastHudUpdateMs = nowMs;
+
     const t = sim.truck;
     const r = sim.trailer;
 
     // Digital Speedometer & Gear
-    $('#hud-speed').textContent = sim.currentSpeedKmh;
-    $('#hud-gear').textContent = t.gear === -1 ? 'R' : `D${t.gear}`;
+    safeText('#hud-speed', sim.currentSpeedKmh);
+    safeText('#hud-gear', t.gear === -1 ? 'R' : `D${t.gear}`);
 
     // Speed limit
-    const speedLimitEl = $('#hud-speed-limit');
-    speedLimitEl.textContent = `${sim.speedLimit}`;
-    speedLimitEl.classList.toggle('overspeed', sim.currentSpeedKmh > sim.speedLimit + 5);
+    safeText('#hud-speed-limit', sim.speedLimit);
+    const speedLimitEl = elCache.get('#hud-speed-limit') || $('#hud-speed-limit');
+    if (speedLimitEl) speedLimitEl.classList.toggle('overspeed', sim.currentSpeedKmh > sim.speedLimit + 5);
 
     // Fuel & Odometer
-    $('#hud-fuel').textContent = `${Math.round(t.fuel)} L`;
-    $('#hud-odometer').textContent = `${t.odometer.toFixed(1)} km`;
+    safeText('#hud-fuel', `${Math.round(t.fuel)} L`);
+    safeText('#hud-odometer', `${t.odometer.toFixed(1)} km`);
 
     // Pressure & Damage
-    $('#hud-air').textContent = `${t.airPressure.toFixed(1)} bar`;
-    $('#hud-truck-damage').textContent = `${Math.round(t.damage)}%`;
-    $('#hud-cargo-damage').textContent = `${Math.round(r.cargoDamage)}%`;
+    safeText('#hud-air', `${t.airPressure.toFixed(1)} bar`);
+    safeText('#hud-truck-damage', `${Math.round(t.damage)}%`);
+    safeText('#hud-cargo-damage', `${Math.round(r.cargoDamage)}%`);
 
     // Turn Signals & Indicators
-    $('#ind-left').classList.toggle('active', (t.turnSignal === -1 || t.turnSignal === 2) && renderer.turnBlinkOn);
-    $('#ind-right').classList.toggle('active', (t.turnSignal === 1 || t.turnSignal === 2) && renderer.turnBlinkOn);
-    $('#ind-lights').classList.toggle('active', t.lights > 0);
-    $('#ind-lights').textContent = t.lights === 2 ? 'HIGH' : t.lights === 1 ? 'LOW' : 'OFF';
-    $('#ind-trailer').classList.toggle('active', r.attached);
-    $('#ind-trailer').textContent = r.attached ? 'TRAILER: ON' : 'NO TRAILER';
-    $('#ind-park').classList.toggle('active', t.parkingBrake);
+    const indLeft = elCache.get('#ind-left') || $('#ind-left');
+    const indRight = elCache.get('#ind-right') || $('#ind-right');
+    const indLights = elCache.get('#ind-lights') || $('#ind-lights');
+    const indTrailer = elCache.get('#ind-trailer') || $('#ind-trailer');
+    const indPark = elCache.get('#ind-park') || $('#ind-park');
+
+    if (indLeft) indLeft.classList.toggle('active', (t.turnSignal === -1 || t.turnSignal === 2) && renderer.turnBlinkOn);
+    if (indRight) indRight.classList.toggle('active', (t.turnSignal === 1 || t.turnSignal === 2) && renderer.turnBlinkOn);
+    if (indLights) {
+      indLights.classList.toggle('active', t.lights > 0);
+      safeText(indLights, t.lights === 2 ? 'HIGH' : t.lights === 1 ? 'LOW' : 'OFF');
+    }
+    if (indTrailer) {
+      indTrailer.classList.toggle('active', r.attached);
+      safeText(indTrailer, r.attached ? 'TRAILER: ON' : 'NO TRAILER');
+    }
+    if (indPark) indPark.classList.toggle('active', t.parkingBrake);
 
     // GPS Navigation & ETA Calculations (Real OSM Graph & A* Route)
     if (profile.activeJob && profile.activeJob.targetDepot && typeof profile.activeJob.targetDepot.x === 'number') {
       const target = profile.activeJob.targetDepot;
-      let route = null;
-      if (map.findRoute) {
-        route = map.findRoute(t, target);
+      const nowMs = performance.now();
+      const needsRecalc = !sim.currentRoute ||
+                          sim.navTarget !== target ||
+                          (sim._lastRouteCalcTime === 0);
+
+      if (needsRecalc && map.findRoute) {
+        sim.currentRoute = map.findRoute(t, target);
+        sim.navTarget = target;
+        sim._lastRouteCalcTime = nowMs;
       }
-      sim.currentRoute = route;
-      sim.navTarget = target;
-      const distKm = route ? (route.totalDistKm).toFixed(1) : Math.max(0.1, (Math.hypot(target.x - t.x, target.y - t.y) / 526.3)).toFixed(1);
-      const estMinutes = route ? route.totalEstMinutes : Math.max(1, Math.round((distKm / 75) * 60));
 
-      const nextEdge = route && route.edges && route.edges[0];
-      const roadRef = nextEdge ? (nextEdge.ref || nextEdge.name || 'M2') : 'M2';
+      const route = sim.currentRoute;
+      const lastHudCalc = sim._lastHudCalc || 0;
+      if (nowMs - lastHudCalc > 150 || !sim._cachedHudData) {
+        sim._lastHudCalc = nowMs;
 
-      safeText('#hud-turn-dist', `${distKm} км`);
-      safeText('#hud-turn-icon', distKm < 0.8 ? '↱' : '⬆');
-      safeText('#hud-nav-dest', distKm < 0.8 ? `Поворот на ${target.name}` : `Следуйте по ${roadRef} к ${profile.activeJob.targetCityName || target.name}`);
-      safeText('#hud-nav-dist', `${distKm} км`);
-      safeText('#hud-eta-time', `${estMinutes} мин`);
+        let distKm, estMinutes;
+        if (route && route.polyline && route.polyline.length >= 2) {
+          const poly = route.polyline;
+          let bestDistSq = Infinity;
+          let bestSeg = 0;
+          let bestX = poly[0][0], bestY = poly[0][1];
 
-      // Calculate arrival clock
-      const now = new Date();
-      now.setMinutes(now.getMinutes() + estMinutes);
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      safeText('#hud-eta-clock', timeStr);
+          let startIdx = 0;
+          let endIdx = poly.length - 1;
+          if (typeof sim._hudRouteBestSeg === 'number' && sim._hudRouteBestSeg >= 0 && sim._hudRouteBestSeg < poly.length - 1) {
+            startIdx = Math.max(0, sim._hudRouteBestSeg - 2);
+            endIdx = Math.min(poly.length - 1, sim._hudRouteBestSeg + 15);
+          }
 
-      // Update world map bottom ETA bar too
-      const navFooter = document.querySelector('#gmaps-navigation-footer');
-      if (navFooter) navFooter.hidden = false;
-      safeText('#gmaps-eta-time', `${estMinutes} мин`);
-      safeText('#gmaps-eta-distance', `${distKm} км`);
-      safeText('#gmaps-eta-arrival', `Прибытие в ${timeStr}`);
-      safeText('#gmaps-eta-route-name', `Трасса ${roadRef} (${distKm} км) / ${estMinutes} мин`);
+          for (let i = startIdx; i < endIdx; i++) {
+            const x1 = poly[i][0], y1 = poly[i][1];
+            const x2 = poly[i + 1][0], y2 = poly[i + 1][1];
+            const dx = x2 - x1, dy = y2 - y1;
+            const l2 = dx * dx + dy * dy;
+            if (l2 === 0) continue;
+            let s = ((t.x - x1) * dx + (t.y - y1) * dy) / l2;
+            s = Math.max(0, Math.min(1, s));
+            const qx = x1 + s * dx;
+            const qy = y1 + s * dy;
+            const d2 = (t.x - qx) * (t.x - qx) + (t.y - qy) * (t.y - qy);
+            if (d2 < bestDistSq) {
+              bestDistSq = d2;
+              bestSeg = i;
+              bestX = qx;
+              bestY = qy;
+            }
+          }
+          if (bestDistSq > 90000 && startIdx > 0) {
+            bestDistSq = Infinity;
+            for (let i = 0; i < poly.length - 1; i++) {
+              const x1 = poly[i][0], y1 = poly[i][1];
+              const x2 = poly[i + 1][0], y2 = poly[i + 1][1];
+              const dx = x2 - x1, dy = y2 - y1;
+              const l2 = dx * dx + dy * dy;
+              if (l2 === 0) continue;
+              let s = ((t.x - x1) * dx + (t.y - y1) * dy) / l2;
+              s = Math.max(0, Math.min(1, s));
+              const qx = x1 + s * dx;
+              const qy = y1 + s * dy;
+              const d2 = (t.x - qx) * (t.x - qx) + (t.y - qy) * (t.y - qy);
+              if (d2 < bestDistSq) {
+                bestDistSq = d2;
+                bestSeg = i;
+                bestX = qx;
+                bestY = qy;
+              }
+            }
+          }
+          sim._hudRouteBestSeg = bestSeg;
+          if (bestDistSq > 300 * 300) {
+            sim._lastRouteCalcTime = 0; // Trigger reroute next tick if off-route
+          }
+          let remDist = Math.hypot(poly[bestSeg + 1][0] - bestX, poly[bestSeg + 1][1] - bestY);
+          for (let i = bestSeg + 1; i < poly.length - 1; i++) {
+            remDist += Math.hypot(poly[i + 1][0] - poly[i][0], poly[i + 1][1] - poly[i][1]);
+          }
+          const km = remDist / 526.3;
+          distKm = km.toFixed(1);
+          estMinutes = Math.max(1, Math.round((km / 75) * 60));
+        } else {
+          const fallbackKm = Math.max(0.1, (Math.hypot(target.x - t.x, target.y - t.y) / 526.3));
+          distKm = fallbackKm.toFixed(1);
+          estMinutes = Math.max(1, Math.round((fallbackKm / 75) * 60));
+        }
+
+        const nextEdge = route && route.edges && route.edges[0];
+        const roadRef = nextEdge ? (nextEdge.ref || nextEdge.name || 'M2') : 'M2';
+
+        safeText('#hud-turn-dist', `${distKm} км`);
+        safeText('#hud-turn-icon', distKm < 0.8 ? '↱' : '⬆');
+        safeText('#hud-nav-dest', distKm < 0.8 ? `Поворот на ${target.name}` : `Следуйте по ${roadRef} к ${profile.activeJob.targetCityName || target.name}`);
+        safeText('#hud-nav-dist', `${distKm} км`);
+        safeText('#hud-eta-time', `${estMinutes} мин`);
+
+        // Calculate arrival clock
+        const now = new Date();
+        now.setMinutes(now.getMinutes() + estMinutes);
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        safeText('#hud-eta-clock', timeStr);
+
+        // Update world map bottom ETA bar too
+        const navFooter = document.querySelector('#gmaps-navigation-footer');
+        if (navFooter) navFooter.hidden = false;
+        safeText('#gmaps-eta-time', `${estMinutes} мин`);
+        safeText('#gmaps-eta-distance', `${distKm} км`);
+        safeText('#gmaps-eta-arrival', `Прибытие в ${timeStr}`);
+        safeText('#gmaps-eta-route-name', `Трасса ${roadRef} (${distKm} км) / ${estMinutes} мин`);
+
+        sim._cachedHudData = { distKm, estMinutes, roadRef };
+      }
     } else {
       sim.currentRoute = null;
       sim.navTarget = null;

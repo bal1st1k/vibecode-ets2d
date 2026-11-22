@@ -291,8 +291,59 @@
     }
   }
 
+  // Fast spatial grid for OSM graph nodes to accelerate nearest node queries
+  const nodeSpatialGrid = new Map();
+  const NODE_CELL_SIZE = 500;
+
+  function ensureNodeSpatialGrid() {
+    if (nodeSpatialGrid.size > 0 || !osmMap || !osmMap.nodes) return;
+    for (const nid in osmMap.nodes) {
+      const node = osmMap.nodes[nid];
+      const cx = Math.floor(node[0] / NODE_CELL_SIZE);
+      const cy = Math.floor(node[1] / NODE_CELL_SIZE);
+      const k = `${cx}:${cy}`;
+      let list = nodeSpatialGrid.get(k);
+      if (!list) {
+        list = [];
+        nodeSpatialGrid.set(k, list);
+      }
+      list.push(nid);
+    }
+  }
+
   function findNearestNode(x, y) {
     if (!osmMap || !osmMap.nodes) return null;
+    ensureNodeSpatialGrid();
+    if (nodeSpatialGrid.size > 0) {
+      const cx = Math.floor(x / NODE_CELL_SIZE);
+      const cy = Math.floor(y / NODE_CELL_SIZE);
+      let closest = null;
+      let minDistSq = Infinity;
+      for (let r = 0; r <= 8; r++) {
+        let foundInRing = false;
+        for (let dx = -r; dx <= r; dx++) {
+          for (let dy = -r; dy <= r; dy++) {
+            if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+            const list = nodeSpatialGrid.get(`${cx + dx}:${cy + dy}`);
+            if (!list) continue;
+            for (let i = 0; i < list.length; i++) {
+              const nid = list[i];
+              const node = osmMap.nodes[nid];
+              const dSq = (node[0] - x) ** 2 + (node[1] - y) ** 2;
+              if (dSq < minDistSq) {
+                minDistSq = dSq;
+                closest = nid;
+                foundInRing = true;
+              }
+            }
+          }
+        }
+        if (foundInRing && Math.sqrt(minDistSq) <= r * NODE_CELL_SIZE) {
+          return closest;
+        }
+      }
+      if (closest) return closest;
+    }
     let closest = null;
     let minDist = Infinity;
     for (const nid in osmMap.nodes) {
