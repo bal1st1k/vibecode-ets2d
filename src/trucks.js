@@ -97,6 +97,7 @@
 
   const TruckCatalog = {
     TRUCKS,
+    ALL_TRUCKS: TRUCKS,
     getTruck: id => TRUCKS.find(t => t.id === id) || TRUCKS[0]
   };
 

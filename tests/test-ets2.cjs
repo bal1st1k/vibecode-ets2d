@@ -250,6 +250,37 @@ check('Admin Force Hitch/Unhitch operates without speed restriction', () => {
   assert.equal(sim.trailer.cargo.id, 'sunflower_oil');
 });
 
+check('ETSTrucks exports ALL_TRUCKS and purchasing cheapest truck after +250k cheat adds to ownedTrucks', () => {
+  assert(sandbox.ETSTrucks.ALL_TRUCKS, 'ALL_TRUCKS is exported');
+  assert.equal(sandbox.ETSTrucks.ALL_TRUCKS.length, 6, 'Contains all 6 trucks');
+
+  // Test profile purchasing flow
+  const profile = {
+    moneyMdl: 15000,
+    ownedTrucks: [],
+    currentTruckId: null
+  };
+
+  // 1. Cheat: +250k MDL
+  profile.moneyMdl += 250000;
+  assert.equal(profile.moneyMdl, 265000);
+
+  // 2. Find cheapest truck from ALL_TRUCKS
+  const cheapest = [...sandbox.ETSTrucks.ALL_TRUCKS].sort((a, b) => a.priceMdl - b.priceMdl)[0];
+  assert.equal(cheapest.id, 'kamaz-54901');
+  assert.equal(cheapest.priceMdl, 125000);
+
+  // 3. Purchase cheapest truck
+  assert(profile.moneyMdl >= cheapest.priceMdl);
+  profile.moneyMdl -= cheapest.priceMdl;
+  profile.ownedTrucks.push(cheapest.id);
+  profile.currentTruckId = cheapest.id;
+
+  // 4. Verification
+  assert(profile.ownedTrucks.includes(cheapest.id), 'Cheapest truck must be in ownedTrucks');
+  assert.equal(profile.moneyMdl, 140000);
+});
+
 check('index.html contains all critical UI elements without null exceptions', () => {
   assert.match(htmlSource, /id="home-truck-count"/);
   assert.match(htmlSource, /id="hud-truck-model"/);

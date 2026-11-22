@@ -88,6 +88,15 @@
     updateWalletDisplays();
   }
 
+  if (typeof window !== 'undefined') {
+    window.profile = profile;
+    window.saveProfile = saveProfile;
+    window.launchDrive = launchDrive;
+    window.exitDrive = exitDrive;
+    window.navigate = navigate;
+    window.renderDealer = renderDealer;
+  }
+
   function updateWalletDisplays() {
     const formatted = `${profile.moneyMdl.toLocaleString()} MDL`;
     for (const el of $$('[data-wallet]')) el.textContent = formatted;
@@ -1827,6 +1836,8 @@
       if (map.findRoute) {
         route = map.findRoute(t, target);
       }
+      sim.currentRoute = route;
+      sim.navTarget = target;
       const distKm = route ? (route.totalDistKm).toFixed(1) : Math.max(0.1, (Math.hypot(target.x - t.x, target.y - t.y) / 526.3)).toFixed(1);
       const estMinutes = route ? route.totalEstMinutes : Math.max(1, Math.round((distKm / 75) * 60));
 
@@ -1853,6 +1864,8 @@
       safeText('#gmaps-eta-arrival', `Прибытие в ${timeStr}`);
       safeText('#gmaps-eta-route-name', `Трасса ${roadRef} (${distKm} км) / ${estMinutes} мин`);
     } else {
+      sim.currentRoute = null;
+      sim.navTarget = null;
       const navFooter = document.querySelector('#gmaps-navigation-footer');
       if (navFooter) navFooter.hidden = true;
       safeText('#hud-turn-dist', '—');

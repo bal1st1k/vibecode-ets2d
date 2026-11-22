@@ -550,12 +550,24 @@
         }
         if (tooClose) continue;
 
-        const mainText = edge.ref || (edge.name ? edge.name.slice(0, 16).toUpperCase() : 'TRASEU');
-        let subText = 'INTERSECȚIE 150m ↗';
+        let mainText = edge.ref || '';
+        if (!mainText) {
+          mainText = edge.name ? edge.name.slice(0, 16) : 'Трасса';
+        }
+        if (mainText.toUpperCase().includes('TRASEU')) {
+          mainText = mainText.replace(/Traseul|Traseu|TRASEUL|TRASEU/gi, 'Трасса');
+        }
+
+        let subText = 'Перекрёсток 150м ↗';
         if (branchRef) {
           subText = `${branchRef} ↗  |  ${mainText} ↑`;
         } else if (branchName) {
-          subText = `${branchName.slice(0, 14)} ↗`;
+          let bName = branchName;
+          if (bName.includes('Cricova')) bName = 'Крикова';
+          else if (bName.includes('Orhei')) bName = 'Орхей';
+          else if (bName.includes('Chișinău') || bName.includes('Chisinau')) bName = 'Кишинёв';
+          else if (bName.includes('Bălți') || bName.includes('Balti')) bName = 'Бельцы';
+          subText = `${bName.slice(0, 14)} ↗`;
         }
 
         const signObj = {
@@ -596,27 +608,12 @@
       }
     }
 
-    // 3. Fuels: deduplicate (<120 px) and offset along road normal by (roadWidth/2 + 40 px)
+    // 3. Fuels: offset point by w/2 + 30 px from nearest road centerline away from road,
+    // then if after offset two fuels are closer than 120 px, keep one (with brand).
     if (osmMap && Array.isArray(osmMap.fuels)) {
-      const sortedFuels = [...osmMap.fuels].sort((a, b) => {
-        const aB = a.brand ? 1 : 0;
-        const bB = b.brand ? 1 : 0;
-        return bB - aB;
-      });
+      const offsetCandidates = [];
 
-      const deduped = [];
-      for (const f of sortedFuels) {
-        let dup = false;
-        for (const kept of deduped) {
-          if (Math.hypot(f.x - kept.x, f.y - kept.y) < 120) {
-            dup = true;
-            break;
-          }
-        }
-        if (!dup) deduped.push(f);
-      }
-
-      for (const f of deduped) {
+      for (const f of osmMap.fuels) {
         if (!f.nearestNodeId && typeof findNearestNode === 'function') {
           f.nearestNodeId = findNearestNode(f.x, f.y);
         }
@@ -666,30 +663,55 @@
         let angle = 0;
         if (bestEdge && bestPt && bestNormal) {
           const w = getRoadWidth(bestEdge);
-          const offsetDist = w * 0.5 + 40;
+          const offsetDist = w * 0.5 + 30; // w/2 + 30 px from centerline away from road
           posX = bestPt.x + bestNormal.nx * offsetDist;
           posY = bestPt.y + bestNormal.ny * offsetDist;
           angle = bestAngle;
         }
 
-        const fuelObj = {
+        offsetCandidates.push({
           ...f,
           x: posX,
           y: posY,
           rawX: f.x,
           rawY: f.y,
-          angle
-        };
+          angle,
+          hasBrand: Boolean(f.brand && f.brand.trim())
+        });
+      }
 
+      // Sort so stations with brand come first
+      offsetCandidates.sort((a, b) => {
+        const aB = a.hasBrand ? 1 : 0;
+        const bB = b.hasBrand ? 1 : 0;
+        return bB - aB;
+      });
+
+      // Deduplicate AFTER offset: if two fuels are closer than 120 px, keep one (with brand)
+      const dedupedFuels = [];
+      for (const cand of offsetCandidates) {
+        let tooClose = false;
+        for (const kept of dedupedFuels) {
+          if (Math.hypot(cand.x - kept.x, cand.y - kept.y) < 120) {
+            tooClose = true;
+            break;
+          }
+        }
+        if (!tooClose) {
+          dedupedFuels.push(cand);
+        }
+      }
+
+      for (const fuelObj of dedupedFuels) {
         FUELS.push(fuelObj);
         GEOGRAPHY.pois.push({
           id: fuelObj.id,
           name: fuelObj.name || (fuelObj.brand ? 'АЗС ' + fuelObj.brand : ''),
           brand: fuelObj.brand || '',
           type: 'gas',
-          x: posX,
-          y: posY,
-          angle,
+          x: fuelObj.x,
+          y: fuelObj.y,
+          angle: fuelObj.angle,
           label: fuelObj.brand || fuelObj.name || '',
           nearestNodeId: fuelObj.nearestNodeId
         });

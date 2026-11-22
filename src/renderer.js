@@ -102,6 +102,9 @@
       // 3. Draw Roads (asphalt, edge markings, seamless junctions, center dashed lines)
       this._drawRoads(ctx, map, view);
 
+      // 3b. Active Navigation Route in World (wide semi-transparent green line + narrow bright + running chevrons + next turn)
+      this._drawWorldRoute(ctx, sim, view);
+
       // 4. Draw Bridges across rivers
       this._drawBridges(ctx, map, view);
 
@@ -134,6 +137,9 @@
       }
 
       ctx.restore();
+
+      // 13. HUD Mini-Map in Top Right Corner (circular 220 px, ~3000 px surroundings, route, position & heading)
+      this._drawMiniMap(ctx, sim);
     }
 
     // ==============================================================
@@ -445,26 +451,58 @@
         }
 
         // Steel guardrails along inner edges of divided paired highways of this tier
+        // Rule: не рисуй в радиусе w/2 + 20 px от узлов с 3+ рёбрами
         for (let i = 0; i < tierEdges.length; i++) {
           const e = tierEdges[i];
           if (!e.pairedEdgeId || !e.medianSide) continue;
           if (e.medianDist < 50 || e.medianDist > 100) continue;
 
           const totalW = getW(e);
+          const gRadius = totalW * 0.5 + 20;
+
+          const fromJunc = isJunctionNode(e.from);
+          const toJunc = isJunctionNode(e.to);
+          const trimStart = fromJunc ? gRadius : 0;
+          const trimEnd = toJunc ? gRadius : 0;
+
+          const trimmedE = (trimStart > 0 || trimEnd > 0)
+            ? this._trimPolyline(e.points, trimStart, trimEnd)
+            : e.points;
+          if (!trimmedE || trimmedE.length < 2) continue;
+
           const gOffset = e.medianSide * (totalW * 0.5 - 1);
-          const gPts = this._offsetPolyline(e.points, gOffset);
+          const gPts = this._offsetPolyline(trimmedE, gOffset);
           if (!gPts || gPts.length < 2) continue;
 
-          // Continuous steel W-beam guardrail line
+          const isNearJunction = (px, py) => {
+            for (let j = 0; j < junctions.length; j++) {
+              const jn = junctions[j];
+              if (Math.hypot(px - jn.x, py - jn.y) < (jn.radius + 20)) return true;
+            }
+            return false;
+          };
+
+          // Continuous steel W-beam guardrail line (broken if near junction)
           ctx.save();
           ctx.strokeStyle = '#94a3b8';
           ctx.lineWidth = 2.5;
           ctx.beginPath();
-          ctx.moveTo(gPts[0][0], gPts[0][1]);
-          for (let p = 1; p < gPts.length; p++) ctx.lineTo(gPts[p][0], gPts[p][1]);
+          let drawing = false;
+          for (let p = 0; p < gPts.length; p++) {
+            if (isNearJunction(gPts[p][0], gPts[p][1])) {
+              drawing = false;
+              continue;
+            }
+            if (!drawing) {
+              ctx.moveTo(gPts[p][0], gPts[p][1]);
+              drawing = true;
+            } else {
+              ctx.lineTo(gPts[p][0], gPts[p][1]);
+            }
+          }
           ctx.stroke();
 
-          // Short upright barrier posts every 16 px
+          // Short upright barrier posts every 16 px (skipped if near junction)
           ctx.strokeStyle = '#475569';
           ctx.lineWidth = 2;
           let distSincePost = 16;
@@ -482,10 +520,12 @@
               distSincePost = 0;
               const px = gPts[p - 1][0] + (dx / segLen) * traveled;
               const py = gPts[p - 1][1] + (dy / segLen) * traveled;
-              ctx.beginPath();
-              ctx.moveTo(px - nx * 3, py - ny * 3);
-              ctx.lineTo(px + nx * 3, py + ny * 3);
-              ctx.stroke();
+              if (!isNearJunction(px, py)) {
+                ctx.beginPath();
+                ctx.moveTo(px - nx * 3, py - ny * 3);
+                ctx.lineTo(px + nx * 3, py + ny * 3);
+                ctx.stroke();
+              }
             }
             distSincePost += (segLen - traveled);
           }
@@ -539,6 +579,197 @@
           }
         }
       }
+    }
+
+    // ==============================================================
+    // ACTIVE NAVIGATION ROUTE IN WORLD (Wide Green Glow, Animated Arrows, Next Turn Highlight)
+    // ==============================================================
+
+    _drawWorldRoute(ctx, sim, view) {
+      const route = sim && (sim.currentRoute || sim.activeRoute);
+      if (!route || !route.polyline || route.polyline.length < 2) return;
+
+      const t = sim.truck;
+      const poly = route.polyline;
+
+      // 1. Find projection of truck onto polyline to prune passed/driven part
+      let bestDistSq = Infinity;
+      let bestSeg = 0;
+      let bestX = poly[0][0];
+      let bestY = poly[0][1];
+
+      for (let i = 0; i < poly.length - 1; i++) {
+        const x1 = poly[i][0], y1 = poly[i][1];
+        const x2 = poly[i + 1][0], y2 = poly[i + 1][1];
+        const dx = x2 - x1, dy = y2 - y1;
+        const l2 = dx * dx + dy * dy;
+        if (l2 === 0) continue;
+        let s = ((t.x - x1) * dx + (t.y - y1) * dy) / l2;
+        s = Math.max(0, Math.min(1, s));
+        const qx = x1 + s * dx;
+        const qy = y1 + s * dy;
+        const d2 = (t.x - qx) * (t.x - qx) + (t.y - qy) * (t.y - qy);
+        if (d2 < bestDistSq) {
+          bestDistSq = d2;
+          bestSeg = i;
+          bestX = qx;
+          bestY = qy;
+        }
+      }
+
+      // Remaining polyline starting from truck projection point
+      const remaining = [[bestX, bestY]];
+      for (let i = bestSeg + 1; i < poly.length; i++) {
+        remaining.push(poly[i]);
+      }
+      if (remaining.length < 2) return;
+
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Layer 1: Wide semi-transparent green line (поверх асфальта)
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)';
+      ctx.lineWidth = 22;
+      ctx.beginPath();
+      ctx.moveTo(remaining[0][0], remaining[0][1]);
+      for (let p = 1; p < remaining.length; p++) ctx.lineTo(remaining[p][0], remaining[p][1]);
+      ctx.stroke();
+
+      // Layer 2: Narrow bright green line on top
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+
+      // Layer 3: Animated running chevrons / arrows along remaining route
+      const spacing = 70;
+      const phase = (this.pulseTimer * 65) % spacing;
+
+      let accumulated = 0;
+      let nextChevronDist = phase;
+
+      for (let i = 0; i < remaining.length - 1; i++) {
+        const p1 = remaining[i];
+        const p2 = remaining[i + 1];
+        const dx = p2[0] - p1[0];
+        const dy = p2[1] - p1[1];
+        const segLen = Math.hypot(dx, dy);
+        if (segLen === 0) continue;
+        const angle = Math.atan2(dy, dx);
+
+        while (accumulated + segLen >= nextChevronDist) {
+          const tFrac = (nextChevronDist - accumulated) / segLen;
+          const cx = p1[0] + dx * tFrac;
+          const cy = p1[1] + dy * tFrac;
+
+          // Only draw if inside view
+          if (cx >= view.minX - 50 && cx <= view.maxX + 50 && cy >= view.minY - 50 && cy <= view.maxY + 50) {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(angle);
+
+            // Chevron arrow: >
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-5, -6);
+            ctx.lineTo(4, 0);
+            ctx.lineTo(-5, 6);
+            ctx.stroke();
+
+            ctx.restore();
+          }
+          nextChevronDist += spacing;
+        }
+        accumulated += segLen;
+      }
+
+      // Layer 4: Next turn highlight & distance badge
+      // Find the first turn with significant angle deviation (> 25 deg)
+      let turnPt = null;
+      let turnDist = 0;
+      let turnAngleDiff = 0;
+
+      let distSoFar = 0;
+      for (let i = 0; i < remaining.length - 2; i++) {
+        const p1 = remaining[i];
+        const p2 = remaining[i + 1];
+        const p3 = remaining[i + 2];
+        const seg1Len = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+        distSoFar += seg1Len;
+
+        const a1 = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]);
+        const a2 = Math.atan2(p3[1] - p2[1], p3[0] - p2[0]);
+        let diff = a2 - a1;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+
+        if (Math.abs(diff) > 0.4) {
+          turnPt = p2;
+          turnDist = distSoFar;
+          turnAngleDiff = diff;
+          break;
+        }
+      }
+
+      if (!turnPt && remaining.length >= 2) {
+        turnPt = remaining[remaining.length - 1];
+        turnDist = distSoFar;
+      }
+
+      if (turnPt) {
+        // Pulsing glow halo on the asphalt
+        const pulse = Math.sin(this.pulseTimer * 6) * 4;
+        ctx.fillStyle = 'rgba(212, 255, 66, 0.3)';
+        ctx.beginPath();
+        ctx.arc(turnPt[0], turnPt[1], 28 + pulse, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#d4ff42';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Floating turn distance badge above turn point
+        const distText = turnDist < 1000
+          ? `${Math.round(turnDist * 0.1)} м`
+          : `${(turnDist / 526.3).toFixed(1)} км`;
+        const icon = turnAngleDiff > 0.3 ? '↱' : (turnAngleDiff < -0.3 ? '↰' : '⬆');
+        const badgeLabel = `${icon} ${distText}`;
+
+        ctx.save();
+        ctx.translate(turnPt[0], turnPt[1] - 32);
+
+        // Badge pill box
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+        ctx.beginPath();
+        ctx.roundRect(-42, -14, 84, 28, 14);
+        ctx.fill();
+
+        ctx.strokeStyle = '#d4ff42';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Badge pointer triangle
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+        ctx.beginPath();
+        ctx.moveTo(-6, 14);
+        ctx.lineTo(6, 14);
+        ctx.lineTo(0, 20);
+        ctx.closePath();
+        ctx.fill();
+
+        // Badge text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 11px Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeLabel, 0, 0);
+
+        ctx.restore();
+      }
+
+      ctx.restore();
     }
 
     // ==============================================================
@@ -1104,6 +1335,181 @@
         ctx.arc(px, py, pr, 0, Math.PI * 2);
         ctx.fill();
       }
+
+      ctx.restore();
+    }
+
+    // ==============================================================
+    // HUD MINI-MAP (Top Right Corner, Circular 220 px, 3000 px Range, Heading & Route)
+    // ==============================================================
+
+    _drawMiniMap(ctx, sim) {
+      if (!sim) return;
+      const t = sim.truck;
+      const r = sim.trailer;
+      const map = sim.map;
+      if (!t) return;
+
+      const R = 110; // 220 px circular diameter
+      const cx = this.width - 130;
+      const cy = 145;
+      const worldRadius = 1500; // ~3000 px surroundings diameter
+      const s = R / worldRadius;
+
+      ctx.save();
+
+      // 1. Circular clipping mask
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.clip();
+
+      // 2. Tactical dark radar background
+      ctx.fillStyle = '#080d0a';
+      ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+
+      // Distance rings at 500m (36.6 px) and 1000m (73.3 px)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.07)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 500 * 0.1 * 10 * s, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 1000 * 0.1 * 10 * s, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Radial crosshair guides (subtle)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+      ctx.beginPath();
+      ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy);
+      ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R);
+      ctx.stroke();
+
+      // 3. Draw road network in 3000 px surroundings
+      const edges = (map && map.OSM && map.OSM.edges) || (map && map.edges) || [];
+      if (edges && edges.length > 0) {
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        for (let i = 0; i < edges.length; i++) {
+          const e = edges[i];
+          const b = e.bounds;
+          if (b && (b[2] < t.x - worldRadius || b[0] > t.x + worldRadius || b[3] < t.y - worldRadius || b[1] > t.y + worldRadius)) continue;
+          const pts = e.points;
+          if (!pts || pts.length < 2) continue;
+
+          const isMajor = e.roadClass === 'motorway' || e.roadClass === 'trunk' || e.roadClass === 'primary';
+          ctx.strokeStyle = isMajor ? '#334155' : '#1e293b';
+          ctx.lineWidth = isMajor ? 5 : 3;
+
+          ctx.beginPath();
+          for (let p = 0; p < pts.length; p++) {
+            const mx = cx + (pts[p][0] - t.x) * s;
+            const my = cy + (pts[p][1] - t.y) * s;
+            if (p === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+          }
+          ctx.stroke();
+        }
+      }
+
+      // 4. Draw active route on mini-map
+      const route = sim.currentRoute || sim.activeRoute;
+      if (route && route.polyline && route.polyline.length >= 2) {
+        const poly = route.polyline;
+        // Outer glow
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        for (let p = 0; p < poly.length; p++) {
+          const mx = cx + (poly[p][0] - t.x) * s;
+          const my = cy + (poly[p][1] - t.y) * s;
+          if (p === 0) ctx.moveTo(mx, my); else ctx.lineTo(mx, my);
+        }
+        ctx.stroke();
+
+        // Inner bright green route line
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
+      // 5. Semi-trailer on mini-map (if attached)
+      if (r && r.attached) {
+        ctx.save();
+        const trMx = cx + (r.x - t.x) * s;
+        const trMy = cy + (r.y - t.y) * s;
+        ctx.translate(trMx, trMy);
+        ctx.rotate(r.angle);
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(-10, -3, 20, 6);
+        ctx.restore();
+      }
+
+      // 6. Truck position & heading on mini-map (centered at cx, cy)
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(t.angle);
+
+      // Vision cone / heading line
+      ctx.fillStyle = 'rgba(212, 255, 66, 0.15)';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, 36, -0.4, 0.4);
+      ctx.closePath();
+      ctx.fill();
+
+      // Truck marker: crisp directional triangle/chevron
+      ctx.fillStyle = '#f97316'; // Vivid orange truck body
+      ctx.beginPath();
+      ctx.moveTo(10, 0);
+      ctx.lineTo(-7, -6);
+      ctx.lineTo(-4, 0);
+      ctx.lineTo(-7, 6);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.restore();
+
+      // End clipping
+      ctx.restore();
+
+      // 7. Bezel & Glass Ring around mini-map
+      ctx.save();
+      // Outer cyan accent border
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Subtle outer dark shadow
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // North compass indicator badge 'С' at top
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+      ctx.beginPath();
+      ctx.arc(cx, cy - R + 12, 9, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ef4444'; // Red 'С' for North
+      ctx.font = 'bold 9px Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('С', cx, cy - R + 12);
+
+      // Mini-map label below: "GPS 3 KM"
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 8px Roboto, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('GPS 3 KM', cx, cy + R + 4);
 
       ctx.restore();
     }

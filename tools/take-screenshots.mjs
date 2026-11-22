@@ -40,89 +40,102 @@ async function takeScreenshots() {
   await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1000);
 
-  // 1. Navigate to Google Maps Tab
-  console.log('[1/4] Navigating to Google Maps & Route Advisor tab...');
-  await page.click('[data-nav="map"]');
+  // 1. Task 1: Dealership View with purchased truck (after +250k cheat)
+  console.log('[1/6] Task 1: Dealership View with purchased truck...');
+  await page.click('[data-nav="dealer"]');
   await page.waitForTimeout(600);
 
-  // --- Screenshot 1: Full Country Overview (Дальний зум: Fit to bounds) ---
-  console.log('[1/6] Capturing Full Country Overview (Дальний зум: Fit to bounds)...');
+  // Trigger cheat +250k and buy cheapest truck
   await page.evaluate(() => {
-    if (typeof window.fitMapToBounds === 'function') {
-      window.fitMapToBounds();
-    }
-  });
-  await page.waitForTimeout(600);
-  const pathOverview = path.join(SCREENSHOTS_DIR, '01-overview-country.png');
-  await page.screenshot({ path: pathOverview });
-  console.log(`✔ Saved: ${pathOverview}`);
-
-  // --- Screenshot 2: Regional View (Средний зум) ---
-  console.log('[2/6] Capturing Regional View (Средний зум)...');
-  await page.evaluate(() => {
-    const zoomIn = document.querySelector('#btn-gmaps-zoom-in');
-    if (zoomIn) {
-      zoomIn.click();
-      zoomIn.click();
+    if (window.profile && window.ETSTrucks && window.ETSTrucks.ALL_TRUCKS) {
+      window.profile.moneyMdl += 250000;
+      const cheapest = [...window.ETSTrucks.ALL_TRUCKS].sort((a, b) => a.priceMdl - b.priceMdl)[0];
+      if (!window.profile.ownedTrucks.includes(cheapest.id)) {
+        window.profile.ownedTrucks.push(cheapest.id);
+        window.profile.moneyMdl -= cheapest.priceMdl;
+        window.profile.currentTruckId = cheapest.id;
+      }
+      window.saveProfile();
+      window.renderDealer();
     }
   });
   await page.waitForTimeout(600);
-  const pathCorridor = path.join(SCREENSHOTS_DIR, '02-corridor-chisinau-orhei.png');
-  await page.screenshot({ path: pathCorridor });
-  console.log(`✔ Saved: ${pathCorridor}`);
+  const pathTask1 = path.join(SCREENSHOTS_DIR, 'task1-truck-dealer.png');
+  await page.screenshot({ path: pathTask1 });
+  console.log(`✔ Saved: ${pathTask1}`);
 
-  // --- Switch to Driving Mode ---
-  console.log('Switching to Drive Mode for track screenshots...');
-  await page.click('#btn-gmaps-start-driving');
-  await page.waitForTimeout(1000);
-
-  // --- Screenshot 3: M3 Divided Highway (Разделённая трасса M3) ---
-  console.log('[3/6] Capturing M3 Divided Highway (Разделённая трасса M3)...');
+  // Switch to Drive Mode
+  console.log('Switching to Drive Mode for in-world tasks...');
   await page.evaluate(() => {
-    if (typeof window.executeTeleport === 'function') {
-      window.executeTeleport(1458.2, 3352.7, 1.8, 85, 'M3 Разделённая трасса (Южный выезд Кишинёва)');
+    if (typeof window.launchDrive === 'function') {
+      window.launchDrive();
+    } else {
+      const btn = document.querySelector('#start-drive') || document.querySelector('#btn-admin-to-drive');
+      if (btn) btn.click();
     }
   });
   await page.waitForTimeout(1000);
-  const pathM3Divided = path.join(SCREENSHOTS_DIR, '03-m3-divided.png');
-  await page.screenshot({ path: pathM3Divided });
-  console.log(`✔ Saved: ${pathM3Divided}`);
 
-  // --- Screenshot 4: M2 Standard Two-Way Highway (Обычная двухполосная M2) ---
-  console.log('[4/6] Capturing M2 Standard Two-Way Highway (Обычная двухполосная трасса M2)...');
+  // 2. Task 2: Gas Station offset w/2 + 30 px
+  console.log('[2/6] Task 2: Gas Station offset by w/2 + 30 px...');
   await page.evaluate(() => {
     if (typeof window.executeTeleport === 'function') {
-      window.executeTeleport(-2008.9, 5763.7, 1.1, 70, 'M2 Обычная двухполосная трасса (Centura Chișinăului)');
+      // Teleport near Lukoil station on main road
+      window.executeTeleport(831, 1315, -Math.PI / 2, 0, 'АЗС Лукойл (смещение w/2 + 30 px)');
     }
   });
   await page.waitForTimeout(1000);
-  const pathM2TwoWay = path.join(SCREENSHOTS_DIR, '04-m2-twoway.png');
-  await page.screenshot({ path: pathM2TwoWay });
-  console.log(`✔ Saved: ${pathM2TwoWay}`);
+  const pathTask2 = path.join(SCREENSHOTS_DIR, 'task2-gas-station.png');
+  await page.screenshot({ path: pathTask2 });
+  console.log(`✔ Saved: ${pathTask2}`);
 
-  // --- Screenshot 5: Major Interchange near Chișinău (Крупная развязка у Кишинёва / Крикова) ---
-  console.log('[5/6] Capturing Major Interchange near Chișinău (Крупная развязка у Кишинёва / Cricova M1-M2-R6)...');
+  // 3. Task 3: Guardrails trimmed at w/2 + 20 px near 3+ junctions
+  console.log('[3/6] Task 3: Guardrails trimmed near 3+ junction...');
   await page.evaluate(() => {
     if (typeof window.executeTeleport === 'function') {
-      window.executeTeleport(2020, -2980, -1.2, 50, 'Крупная развязка у Кишинёва (Узел Крикова)');
+      window.executeTeleport(2020, -2980, -1.2, 50, 'Развязка Крикова (отбойники обрезаны w/2 + 20 px)');
     }
   });
   await page.waitForTimeout(1000);
-  const pathInterchange = path.join(SCREENSHOTS_DIR, '05-cricova-interchange.png');
-  await page.screenshot({ path: pathInterchange });
-  console.log(`✔ Saved: ${pathInterchange}`);
+  const pathTask3 = path.join(SCREENSHOTS_DIR, 'task3-guardrails-junction.png');
+  await page.screenshot({ path: pathTask3 });
+  console.log(`✔ Saved: ${pathTask3}`);
 
-  // --- Screenshot 6: Two-Way Highway at Măgdăcești ---
-  console.log('[6/6] Capturing Highway at Măgdăcești...');
+  // 4. Task 4: Russian Roadside Signs ("Перекрёсток 150м ↗")
+  console.log('[4/6] Task 4: Russian Signs («Перекрёсток»)...');
   await page.evaluate(() => {
     if (typeof window.executeTeleport === 'function') {
-      window.executeTeleport(1244, -4736, -1.96, 75, 'Трасса у Мэгдачешть');
+      window.executeTeleport(1826, 840, -1.359, 0, 'Дорожный знак «Перекрёсток»');
     }
   });
   await page.waitForTimeout(1000);
-  const pathMagdacesti = path.join(SCREENSHOTS_DIR, '06-m2-magdacesti.png');
-  await page.screenshot({ path: pathMagdacesti });
-  console.log(`✔ Saved: ${pathMagdacesti}`);
+  const pathTask4 = path.join(SCREENSHOTS_DIR, 'task4-russian-signs.png');
+  await page.screenshot({ path: pathTask4 });
+  console.log(`✔ Saved: ${pathTask4}`);
+
+  // 5. Task 5: In-world Route (wide green glow + bright line + chevrons + next turn badge)
+  console.log('[5/6] Task 5: In-world Active Route Navigation & Next Turn Badge...');
+  await page.evaluate(() => {
+    if (typeof window.executeTeleport === 'function') {
+      window.executeTeleport(1244, -4736, -1.96, 70, 'Маршрут в мире (Мэгдачешть)');
+    }
+  });
+  await page.waitForTimeout(1000);
+  const pathTask5 = path.join(SCREENSHOTS_DIR, 'task5-world-route.png');
+  await page.screenshot({ path: pathTask5 });
+  console.log(`✔ Saved: ${pathTask5}`);
+
+  // 6. Task 6: HUD Mini-Map in top right corner (circular 220 px, 3000 px range)
+  console.log('[6/6] Task 6: HUD Mini-Map (220 px circular, top right)...');
+  await page.evaluate(() => {
+    if (typeof window.executeTeleport === 'function') {
+      window.executeTeleport(1458.2, 3352.7, 1.8, 80, 'Мини-карта в HUD');
+    }
+  });
+  await page.waitForTimeout(1000);
+  const pathTask6 = path.join(SCREENSHOTS_DIR, 'task6-hud-minimap.png');
+  await page.screenshot({ path: pathTask6 });
+  console.log(`✔ Saved: ${pathTask6}`);
 
   await browser.close();
   console.log('====================================================');
