@@ -651,18 +651,12 @@
           : e.points;
 
         if (trimmed && trimmed.length >= 2) {
-          e._solidMarkings = [];
           e._dashedMarkings = [];
           for (let k = 1; k < lanes; k++) {
             const offset = -halfC + k * 36;
             const linePts = this._offsetPolyline(trimmed, offset);
             if (!linePts || linePts.length < 2) continue;
-
-            if (!e.oneway && lanes >= 4 && k === Math.floor(lanes / 2)) {
-              e._solidMarkings.push(linePts);
-            } else {
-              e._dashedMarkings.push(linePts);
-            }
+            e._dashedMarkings.push(linePts);
           }
         }
       }
