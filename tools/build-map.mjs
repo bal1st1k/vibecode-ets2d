@@ -193,6 +193,13 @@ async function buildMap() {
         } else if (item.type === 'way' && item.tags && item.tags.highway) {
           const hw = item.tags.highway;
           if (ROAD_CLASSES[hw]) {
+            const lanes = parseInt(item.tags.lanes) || 0;
+            const lanesForward = parseInt(item.tags['lanes:forward']) || 0;
+            const lanesBackward = parseInt(item.tags['lanes:backward']) || 0;
+            const bridge = Boolean(item.tags.bridge && item.tags.bridge !== 'no');
+            const tunnel = Boolean(item.tags.tunnel && item.tags.tunnel !== 'no');
+            const junction = item.tags.junction || '';
+
             rawWays.push({
               id: item.id,
               highway: hw,
@@ -200,6 +207,12 @@ async function buildMap() {
               ref: item.tags.ref || '',
               maxspeed: item.tags.maxspeed || '',
               oneway: item.tags.oneway === 'yes' || item.tags.oneway === '1' || hw === 'motorway',
+              lanes,
+              lanesForward,
+              lanesBackward,
+              bridge,
+              tunnel,
+              junction,
               refs: item.refs
             });
 
@@ -328,6 +341,12 @@ async function buildMap() {
             points: pts,
             bounds: [Math.round(minX), Math.round(minY), Math.round(maxX), Math.round(maxY)]
           };
+          if (way.lanes > 0) edgeObj.lanes = way.lanes;
+          if (way.lanesForward > 0) edgeObj.lanesForward = way.lanesForward;
+          if (way.lanesBackward > 0) edgeObj.lanesBackward = way.lanesBackward;
+          if (way.bridge) edgeObj.bridge = 1;
+          if (way.tunnel) edgeObj.tunnel = 1;
+          if (way.junction) edgeObj.junction = way.junction;
 
           graphEdges.push(edgeObj);
 

@@ -9,505 +9,45 @@
   const UNITS_PER_METER = 10;
   const realKmToUnits = realKm => (realKm * 1000 / ETS2_SCALE) * UNITS_PER_METER;
 
-  // Hermite spline interpolation for ultra-smooth realistic highway curves
-  function hermitePoint(p0, p1, p2, p3, t, tension = 0.25) {
-    const t2 = t * t, t3 = t2 * t;
-    const h00 = 2 * t3 - 3 * t2 + 1;
-    const h10 = t3 - 2 * t2 + t;
-    const h01 = -2 * t3 + 3 * t2;
-    const h11 = t3 - t2;
-    return {
-      x: h00 * p1.x + h10 * (p2.x - p0.x) * tension + h01 * p2.x + h11 * (p3.x - p1.x) * tension,
-      y: h00 * p1.y + h10 * (p2.y - p0.y) * tension + h01 * p2.y + h11 * (p3.y - p1.y) * tension
-    };
+  // Road lanes lookup: oneway default trunk/primary = 2, others = 1; two-way default = 2; max 3 lanes; links = 1
+  function getEdgeLanes(edge) {
+    if (!edge) return 2;
+    const rc = edge.roadClass || '';
+    if (rc.endsWith('_link')) {
+      return 1;
+    }
+    let lanes = 2;
+    if (edge.oneway) {
+      if (edge.lanes && edge.lanes > 0) lanes = edge.lanes;
+      else if (rc === 'motorway' || rc === 'trunk' || rc === 'primary') lanes = 2;
+      else lanes = 1;
+    } else {
+      if (edge.lanes && edge.lanes > 0) lanes = edge.lanes;
+      else lanes = 2;
+    }
+    return Math.min(3, Math.max(1, lanes));
   }
 
-  // Pre-bake roads with dense Hermite sampling, bounds, and normal vectors
-  function bakeRoad(road) {
-    const raw = road.points;
-    const count = raw.length;
-    const dense = [];
-    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-
-    if (count < 2) {
-      return {
-        ...road,
-        dense: raw.map(p => ({ ...p, angle: 0, nx: 0, ny: 1, dist: 0 })),
-        totalLength: 0,
-        bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 }
-      };
+  // Road width calculation: lanes * 36 + shoulders of 10 px each side for trunk/primary/secondary. Links = 36 px (no shoulder).
+  function getRoadWidth(edgeOrClass, maybeLanes, maybeOneway) {
+    let rc, lanes, oneway;
+    if (typeof edgeOrClass === 'object' && edgeOrClass !== null) {
+      rc = edgeOrClass.roadClass || '';
+      lanes = getEdgeLanes(edgeOrClass);
+      oneway = Boolean(edgeOrClass.oneway);
+    } else {
+      rc = edgeOrClass || '';
+      oneway = Boolean(maybeOneway);
+      lanes = maybeLanes || (oneway ? ((rc === 'motorway' || rc === 'trunk' || rc === 'primary') ? 2 : 1) : 2);
     }
-
-    for (let i = 0; i < count - 1; i++) {
-      const p0 = raw[Math.max(0, i - 1)];
-      const p1 = raw[i];
-      const p2 = raw[i + 1];
-      const p3 = raw[Math.min(count - 1, i + 2)];
-      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-      const steps = clamp(Math.ceil(dist / 40), 10, 80);
-
-      for (let s = 0; s < steps; s++) {
-        dense.push(hermitePoint(p0, p1, p2, p3, s / steps));
-      }
+    if (rc.endsWith('_link')) {
+      return 36;
     }
-    dense.push({ ...raw[count - 1] });
-
-    let totalLength = 0;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-    for (let i = 0; i < dense.length; i++) {
-      const p = dense[i];
-      const next = dense[Math.min(i + 1, dense.length - 1)];
-      const prev = dense[Math.max(0, i - 1)];
-      const angle = Math.atan2(next.y - prev.y, next.x - prev.x);
-      p.angle = angle;
-      p.nx = -Math.sin(angle);
-      p.ny = Math.cos(angle);
-      if (i > 0) totalLength += Math.hypot(p.x - dense[i - 1].x, p.y - dense[i - 1].y);
-      p.dist = totalLength;
-
-      minX = Math.min(minX, p.x);
-      minY = Math.min(minY, p.y);
-      maxX = Math.max(maxX, p.x);
-      maxY = Math.max(maxY, p.y);
-    }
-
-    const margin = (road.width || 140) + 120;
-    return {
-      ...road,
-      dense,
-      totalLength,
-      bounds: {
-        minX: minX - margin,
-        minY: minY - margin,
-        maxX: maxX + margin,
-        maxY: maxY + margin
-      }
-    };
+    lanes = Math.min(3, Math.max(1, lanes));
+    const hasShoulder = rc === 'motorway' || rc === 'trunk' || rc === 'primary' || rc === 'secondary';
+    const shoulder = hasShoulder ? 10 : 0;
+    return lanes * 36 + shoulder * 2;
   }
-
-  // ==============================================================
-  // REPUBLIC OF MOLDOVA ROAD NETWORK (Full ETS 2 Map Topology)
-  // Major Cities: Chișinău, Bălți, Orhei, Ungheni, Tiraspol, Hîncești
-  // ==============================================================
-
-  // 1. Traseul M2 (Chișinău — Stăuceni — Cricova — Peresecina — Orhei)
-  const M2_HIGHWAY = {
-    id: 'm2-highway',
-    code: 'M2',
-    name: 'Traseul M2 (Chișinău — Orhei)',
-    speedLimit: 90,
-    lanes: 2,
-    width: 140,
-    category: 'highway',
-    points: [
-      { x: 1200, y: 3000 },    // Chișinău Center Depot
-      { x: 1200, y: 1800 },    // Centura North Interchange
-      { x: 1350, y: 950 },     // Stăuceni
-      { x: 1550, y: -200 },    // Stăuceni Hill
-      { x: 1700, y: -2200 },   // Cricova Cloverleaf (M1 Interchange)
-      { x: 1600, y: -3500 },   // Cricova North
-      { x: 1400, y: -4800 },   // Măgdăcești
-      { x: 1250, y: -5900 },   // Măgdăcești North
-      { x: 1050, y: -7200 },   // Ratuș
-      { x: 750, y: -8600 },    // Codru Forest Edge
-      { x: 350, y: -9800 },    // Peresecina Entry Descent
-      { x: -200, y: -11000 },  // Peresecina Serpentine 1
-      { x: -650, y: -11900 },  // Peresecina Serpentine 2 (Hairpin)
-      { x: -450, y: -12800 },  // Peresecina Valley (Rompetrol Gas Station)
-      { x: 50, y: -13900 },    // Peresecina Hill Climb
-      { x: 450, y: -15200 },   // Codru Ridge
-      { x: 800, y: -17000 },   // Pelivan
-      { x: 1200, y: -19200 },  // Orhei South Roundabout (R14 Junction)
-      { x: 1200, y: -20000 },  // Răut River Bridge
-      { x: 1200, y: -20684 }   // Orhei Logistics Terminal
-    ]
-  };
-
-  // 2. Traseul R14 (Orhei — Telenești — Sîngerei — Bălți)
-  const R14_HIGHWAY = {
-    id: 'r14-highway',
-    code: 'R14',
-    name: 'Traseul R14 (Orhei — Bălți)',
-    speedLimit: 90,
-    lanes: 2,
-    width: 130,
-    category: 'highway',
-    points: [
-      { x: 1200, y: -19200 },  // Orhei South Roundabout
-      { x: 400, y: -20200 },   // Mitoc Approach
-      { x: -400, y: -21500 },  // Mitoc Crossroads
-      { x: -1800, y: -24500 }, // Telenești Exit
-      { x: -3200, y: -28000 }, // Codru Hills North
-      { x: -4800, y: -32000 }, // Sîngerei South
-      { x: -6200, y: -35500 }, // Sîngerei North
-      { x: -7500, y: -38000 }  // Bălți South Roundabout
-    ]
-  };
-
-  // 3. Autostrada M5 (Bălți — Fălești — Călărași — Strășeni — Chișinău)
-  const M5_HIGHWAY = {
-    id: 'm5-highway',
-    code: 'M5',
-    name: 'Autostrada M5 (Bălți — Chișinău)',
-    speedLimit: 100,
-    lanes: 2,
-    width: 140,
-    category: 'highway',
-    points: [
-      { x: -7500, y: -38000 }, // Bălți South Roundabout
-      { x: -7100, y: -34000 }, // Bălți Airport Corridor
-      { x: -6500, y: -28000 }, // Fălești Interchange
-      { x: -5000, y: -20000 }, // Călărași Hills West
-      { x: -4000, y: -13000 }, // Codru West Reserve
-      { x: -2800, y: -5000 },  // Strășeni North / Bucovăț
-      { x: -1600, y: -1000 },  // Trușeni
-      { x: -800, y: 2200 }     // Chișinău Centura West (Petricani)
-    ]
-  };
-
-  // 4. Traseul R1 (Chișinău — Strășeni — Călărași — Cornești — Ungheni Border)
-  const R1_HIGHWAY = {
-    id: 'r1-highway',
-    code: 'R1',
-    name: 'Traseul R1 (Chișinău — Ungheni)',
-    speedLimit: 90,
-    lanes: 2,
-    width: 130,
-    category: 'highway',
-    points: [
-      { x: -800, y: 2200 },    // Chișinău Centura West
-      { x: -3000, y: 2500 },   // Vatra / Ghidighici Reservoir
-      { x: -6500, y: 2800 },   // Strășeni City
-      { x: -9500, y: 3000 },   // Panășești
-      { x: -14000, y: 3200 },  // Călărași City Center
-      { x: -19000, y: 3000 },  // Bahmut Hills
-      { x: -24000, y: 2700 },  // Pîrlița
-      { x: -28500, y: 2500 },  // Ungheni City Entry
-      { x: -30000, y: 2400 }   // Ungheni Customs & Rail Terminal (Prut River)
-    ]
-  };
-
-  // 5. Traseul M1 (Cricova — Vadul lui Vodă — Criuleni — Dubăsari)
-  const M1_HIGHWAY = {
-    id: 'm1-highway',
-    code: 'M1',
-    name: 'Traseul M1 (Cricova — Dubăsari)',
-    speedLimit: 90,
-    lanes: 2,
-    width: 130,
-    category: 'highway',
-    points: [
-      { x: 1700, y: -2200 },   // Cricova Cloverleaf
-      { x: 3500, y: -2300 },   // Hrușova
-      { x: 6000, y: -2450 },   // Vadul lui Vodă Resort
-      { x: 8500, y: -2600 },   // Criuleni Bypass
-      { x: 10500, y: -2700 },  // Nistru River Bridge
-      { x: 12500, y: -2800 }   // Dubăsari Freight Terminal
-    ]
-  };
-
-  // 6. Traseul R2 (Chișinău — Anenii Noi — Tiraspol)
-  const R2_HIGHWAY = {
-    id: 'r2-highway',
-    code: 'R2',
-    name: 'Traseul R2 (Chișinău — Tiraspol)',
-    speedLimit: 90,
-    lanes: 2,
-    width: 130,
-    category: 'highway',
-    points: [
-      { x: 2800, y: 3200 },    // Chișinău Centura East
-      { x: 5500, y: 4200 },    // Sîngera
-      { x: 8500, y: 4900 },    // Țînțăreni
-      { x: 11500, y: 5400 },   // Anenii Noi City
-      { x: 14500, y: 5900 },   // Nistru River Bridge (Gura Bîcului)
-      { x: 17500, y: 6400 }    // Tiraspol Industrial Terminal
-    ]
-  };
-
-  // 7. Traseul M3 (Chișinău — Ialoveni — Fundul Galbenei — Hîncești)
-  const M3_HIGHWAY = {
-    id: 'm3-highway',
-    code: 'M3',
-    name: 'Traseul M3 (Chișinău — Hîncești)',
-    speedLimit: 90,
-    lanes: 2,
-    width: 130,
-    category: 'highway',
-    points: [
-      { x: 1200, y: 4500 },    // Chișinău Centura South
-      { x: 700, y: 7200 },     // Ialoveni
-      { x: -100, y: 10200 },   // Dănceni Lake
-      { x: -900, y: 13800 },   // Fundul Galbenei Serpentines
-      { x: -1500, y: 17000 },  // Hîncești Crest
-      { x: -2200, y: 19800 }   // Hîncești Winery Terminal
-    ]
-  };
-
-  // 8. Centura de Nord & Sud Chișinău (Full 360° Orbital Ring Road)
-  const CENTURA_CHISINAU = {
-    id: 'centura-chisinau',
-    code: 'Centura',
-    name: 'Centura Orbitală Chișinău',
-    speedLimit: 70,
-    lanes: 2,
-    width: 120,
-    category: 'secondary',
-    points: [
-      { x: 1200, y: 1800 },    // North (M2 Junction)
-      { x: 2200, y: 2200 },    // North-East (Ciocana)
-      { x: 2800, y: 3200 },    // East (R2 Junction to Tiraspol)
-      { x: 2300, y: 4200 },    // South-East (Aeroport)
-      { x: 1200, y: 4500 },    // South (M3 Junction to Hîncești)
-      { x: 0, y: 4200 },       // South-West (Telecentru)
-      { x: -800, y: 2200 },    // West (R1/M5 Junction to Ungheni & Bălți)
-      { x: 0, y: 1750 },       // North-West (Petricani)
-      { x: 1200, y: 1800 }     // Closed orbital loop!
-    ]
-  };
-
-  // 9. Cricova Cloverleaf Connector Ramp (M2 Northbound -> M1 Eastbound)
-  const CRICOVA_RAMP = {
-    id: 'cricova-ramp',
-    code: 'Ramp',
-    name: 'Nod Rutier Cricova (Bretea M2 → M1)',
-    speedLimit: 50,
-    lanes: 1,
-    width: 90,
-    category: 'ramp',
-    points: [
-      { x: 1650, y: -1800 },
-      { x: 1850, y: -1980 },
-      { x: 2050, y: -2150 },
-      { x: 2250, y: -2220 }
-    ]
-  };
-
-  // 10. Orhei City Avenue (Strada Vasile Lupu)
-  const ORHEI_CITY_AVENUE = {
-    id: 'orhei-city',
-    code: 'Orhei',
-    name: 'Bulevardul Orhei (Centru)',
-    speedLimit: 50,
-    lanes: 2,
-    width: 100,
-    category: 'urban',
-    points: [
-      { x: 1200, y: -19200 },
-      { x: 1700, y: -19600 },
-      { x: 2200, y: -20200 },
-      { x: 2600, y: -20900 }
-    ]
-  };
-
-  // 11. Bălți City Avenue (Strada Decebal / Centru)
-  const BALTI_CITY_AVENUE = {
-    id: 'balti-city',
-    code: 'Bălți',
-    name: 'Bulevardul Bălți (Centru)',
-    speedLimit: 50,
-    lanes: 2,
-    width: 105,
-    category: 'urban',
-    points: [
-      { x: -7500, y: -38000 },
-      { x: -8000, y: -39000 },
-      { x: -8500, y: -40000 },
-      { x: -8800, y: -41200 }
-    ]
-  };
-
-  // 12. Ungheni City Avenue (Strada Națională)
-  const UNGHENI_CITY_AVENUE = {
-    id: 'ungheni-city',
-    code: 'Ungheni',
-    name: 'Bulevardul Ungheni (Vamă)',
-    speedLimit: 50,
-    lanes: 2,
-    width: 100,
-    category: 'urban',
-    points: [
-      { x: -28500, y: 2500 },
-      { x: -29300, y: 2450 },
-      { x: -30000, y: 2400 }
-    ]
-  };
-
-  // 13. Tiraspol City Avenue (Strada 25 Octombrie)
-  const TIRASPOL_CITY_AVENUE = {
-    id: 'tiraspol-city',
-    code: 'Tiraspol',
-    name: 'Bulevardul Tiraspol (Centru)',
-    speedLimit: 50,
-    lanes: 2,
-    width: 100,
-    category: 'urban',
-    points: [
-      { x: 16000, y: 6200 },
-      { x: 16800, y: 6300 },
-      { x: 17500, y: 6400 }
-    ]
-  };
-
-  // 14. Hîncești City Avenue (Strada Chișinăului)
-  const HINCESTI_CITY_AVENUE = {
-    id: 'hincesti-city',
-    code: 'Hîncești',
-    name: 'Bulevardul Hîncești (Centru)',
-    speedLimit: 50,
-    lanes: 2,
-    width: 100,
-    category: 'urban',
-    points: [
-      { x: -1700, y: 18500 },
-      { x: -2000, y: 19200 },
-      { x: -2200, y: 19800 }
-    ]
-  };
-
-  // 15. Peresecina Gas Station & Truck Rest Stop Loop
-  const ROMPETROL_LOOP = {
-    id: 'rompetrol-loop',
-    code: 'Rompetrol',
-    name: 'Parcare & Peco Rompetrol Peresecina',
-    speedLimit: 30,
-    lanes: 1,
-    width: 85,
-    category: 'service',
-    points: [
-      { x: -480, y: -12500 },
-      { x: -680, y: -12700 },
-      { x: -720, y: -12900 },
-      { x: -620, y: -13100 },
-      { x: -430, y: -13250 }
-    ]
-  };
-
-  // 16. Chișinău Central Depot Yard Road
-  const CHISINAU_DEPOT_YARD = {
-    id: 'chisinau-yard',
-    code: 'Yard-C',
-    name: 'Baza Trans-Moldova Chișinău',
-    speedLimit: 30,
-    lanes: 1,
-    width: 100,
-    category: 'service',
-    points: [
-      { x: 1200, y: 3000 },
-      { x: 1050, y: 3100 },
-      { x: 900, y: 3150 },
-      { x: 750, y: 3150 }
-    ]
-  };
-
-  // 17. Orhei Logistics Terminal Yard Road
-  const ORHEI_TERMINAL_YARD = {
-    id: 'orhei-yard',
-    code: 'Yard-O',
-    name: 'Orhei Logistics Terminal (Rampa)',
-    speedLimit: 30,
-    lanes: 1,
-    width: 100,
-    category: 'service',
-    points: [
-      { x: 1200, y: -20684 },
-      { x: 1100, y: -20720 },
-      { x: 1000, y: -20744 }
-    ]
-  };
-
-  // 18. Bălți Logistics Hub Yard Road
-  const BALTI_DEPOT_YARD = {
-    id: 'balti-yard',
-    code: 'Yard-B',
-    name: 'Bălți Agro-Mașini Terminal (Rampa)',
-    speedLimit: 30,
-    lanes: 1,
-    width: 100,
-    category: 'service',
-    points: [
-      { x: -8800, y: -41200 },
-      { x: -8900, y: -41400 },
-      { x: -9000, y: -41600 }
-    ]
-  };
-
-  // 19. Ungheni Customs & Rail Port Yard Road
-  const UNGHENI_DEPOT_YARD = {
-    id: 'ungheni-yard',
-    code: 'Yard-U',
-    name: 'Ungheni Vamă Terminal (Rampa)',
-    speedLimit: 30,
-    lanes: 1,
-    width: 100,
-    category: 'service',
-    points: [
-      { x: -30000, y: 2400 },
-      { x: -30200, y: 2350 },
-      { x: -30400, y: 2300 }
-    ]
-  };
-
-  // 20. Tiraspol Industrial Terminal Yard Road
-  const TIRASPOL_DEPOT_YARD = {
-    id: 'tiraspol-yard',
-    code: 'Yard-T',
-    name: 'Tiraspol Logistic Terminal (Rampa)',
-    speedLimit: 30,
-    lanes: 1,
-    width: 100,
-    category: 'service',
-    points: [
-      { x: 17500, y: 6400 },
-      { x: 17700, y: 6450 },
-      { x: 17900, y: 6500 }
-    ]
-  };
-
-  // 21. Hîncești Vit-Agro Yard Road
-  const HINCESTI_DEPOT_YARD = {
-    id: 'hincesti-yard',
-    code: 'Yard-H',
-    name: 'Hîncești Vit-Agro Terminal (Rampa)',
-    speedLimit: 30,
-    lanes: 1,
-    width: 100,
-    category: 'service',
-    points: [
-      { x: -2200, y: 19800 },
-      { x: -2350, y: 20000 },
-      { x: -2500, y: 20200 }
-    ]
-  };
-
-  // Full Moldovan Network of All Interconnected Roads
-  const ALL_RAW_ROADS = [
-    M2_HIGHWAY,
-    R14_HIGHWAY,
-    M5_HIGHWAY,
-    R1_HIGHWAY,
-    M1_HIGHWAY,
-    R2_HIGHWAY,
-    M3_HIGHWAY,
-    CENTURA_CHISINAU,
-    CRICOVA_RAMP,
-    ORHEI_CITY_AVENUE,
-    BALTI_CITY_AVENUE,
-    UNGHENI_CITY_AVENUE,
-    TIRASPOL_CITY_AVENUE,
-    HINCESTI_CITY_AVENUE,
-    ROMPETROL_LOOP,
-    CHISINAU_DEPOT_YARD,
-    ORHEI_TERMINAL_YARD,
-    BALTI_DEPOT_YARD,
-    UNGHENI_DEPOT_YARD,
-    TIRASPOL_DEPOT_YARD,
-    HINCESTI_DEPOT_YARD
-  ];
-
-  // Bake all roads into dense Hermite geometry with pre-computed normals & spatial bounds
-  const BAKED_ROADS = ALL_RAW_ROADS.map(bakeRoad);
 
   // Freight Market Cargo
   const CARGO_CATALOG = [
@@ -541,35 +81,10 @@
     { id: 'anenii-noi', name: 'Anenii Noi', nameRu: 'Новые Анены', x: 11500, y: 5400, rank: 3, desc: 'Трасса R2 на Тирасполь' }
   ];
 
-  // Dynamic DEPOTS & FUELS containers loaded strictly from data/moldova-map.json
+  // Dynamic DEPOTS, FUELS & ROAD_SIGNS containers loaded strictly from data/moldova-map.json
   const DEPOTS = [];
   const FUELS = [];
-
-  // Major Highway Interchanges & Roundabouts (Seamless Paved Junctions)
-  const JUNCTIONS = [
-    { id: 'cricova-cloverleaf', name: 'Развязка M1 / M2 Cricova', x: 1700, y: -2200, radius: 180, type: 'cloverleaf' },
-    { id: 'orhei-roundabout', name: 'Кольцевая развязка Орхей Юг', x: 1200, y: -19200, radius: 110, type: 'roundabout' },
-    { id: 'balti-roundabout', name: 'Кольцевая развязка Бельцы Юг', x: -7500, y: -38000, radius: 120, type: 'roundabout' },
-    { id: 'centura-north', name: 'Развязка Centura de Nord / M2', x: 1200, y: 1800, radius: 140, type: 'interchange' },
-    { id: 'centura-west', name: 'Развязка Centura / R1 / M5', x: -800, y: 2200, radius: 150, type: 'interchange' },
-    { id: 'centura-east', name: 'Развязка Centura / R2', x: 2800, y: 3200, radius: 140, type: 'interchange' },
-    { id: 'centura-south', name: 'Развязка Centura / M3', x: 1200, y: 4500, radius: 140, type: 'interchange' }
-  ];
-
-  // Highway Overhead Direction Signs
-  const ROAD_SIGNS = [
-    { x: 1200, y: 2400, angle: -Math.PI / 2, main: 'M2 ORHEI 38 km', sub: 'M1 DUBĂSARI ↗  |  R1 UNGHENI ↖', speed: 90 },
-    { x: 1650, y: -1600, angle: -Math.PI / 2, main: 'NOD CRICOVA', sub: 'M1 DUBĂSARI ↗  |  M2 ORHEI ↑', speed: 70 },
-    { x: 1400, y: -5400, angle: -Math.PI / 2, main: 'M2 MĂGDĂCEȘTI', sub: 'ORHEI 28 km ↑  |  BĂLȚI 115 km ↑', speed: 90 },
-    { x: -100, y: -10200, angle: -Math.PI / 2, main: 'ATENȚIE! SERPANTINĂ', sub: 'PERSECINA  |  ROMPETROL ⛽ 3 km', speed: 50 },
-    { x: 1100, y: -18500, angle: -Math.PI / 2, main: 'SENS GIRATORIU ORHEI', sub: 'BĂLȚI R14 ↖  |  ORHEI CENTRU ↗', speed: 50 },
-    { x: 500, y: -20000, angle: -2.3, main: 'TRASEUL R14', sub: 'TELENEȘTI 15 km  |  BĂLȚI 75 km ↑', speed: 90 },
-    { x: -6800, y: -36500, angle: -1.9, main: 'SENS GIRATORIU BĂLȚI', sub: 'BĂLȚI CENTRU ↑  |  M5 CHIȘINĂU ↘', speed: 50 },
-    { x: -2000, y: 2400, angle: 3.14, main: 'TRASEUL R1 VEST', sub: 'STRĂȘENI 12 km  |  UNGHENI VAMĂ 85 km', speed: 90 },
-    { x: 4200, y: -2350, angle: 0.05, main: 'TRASEUL M1 EST', sub: 'CRIULENI 18 km  |  DUBĂSARI 35 km', speed: 90 },
-    { x: 4000, y: 3600, angle: 0.4, main: 'TRASEUL R2 SUD-EST', sub: 'ANENII NOI 22 km  |  TIRASPOL 60 km', speed: 90 },
-    { x: 900, y: 5500, angle: 1.8, main: 'TRASEUL M3 SUD', sub: 'IALOVENI 8 km  |  HÎNCEȘTI 28 km', speed: 90 }
-  ];
+  const ROAD_SIGNS = [];
 
   // Moldovan Real Geographical Features (Google Maps Layers)
   const GEOGRAPHY = {
@@ -878,12 +393,188 @@
     return { x: last[0], y: last[1], angle: Math.atan2(last[1] - prev[1], last[0] - prev[0]) };
   }
 
-  // Populate DEPOTS, FUELS and GEOGRAPHY.pois strictly from osmMap data (moldova-map.json)
+  const junctionNodes = [];
+
+  // Populate DEPOTS, FUELS, junctionNodes and GEOGRAPHY.pois strictly from osmMap data (moldova-map.json)
   function initMapObjects() {
     DEPOTS.length = 0;
     FUELS.length = 0;
     GEOGRAPHY.pois = [];
+    junctionNodes.length = 0;
 
+    // 1. Precalculate degree >= 3 junction nodes for seamless intersection rendering
+    if (osmMap && osmMap.nodes && osmMap.edges) {
+      const edgeMap = new Map();
+      for (let i = 0; i < osmMap.edges.length; i++) {
+        edgeMap.set(osmMap.edges[i].id, osmMap.edges[i]);
+      }
+      for (const [id, n] of Object.entries(osmMap.nodes)) {
+        const edgeIds = n[2];
+        if (edgeIds && edgeIds.length >= 3) {
+          let maxW = 55;
+          for (let e = 0; e < edgeIds.length; e++) {
+            const edge = edgeMap.get(edgeIds[e]);
+            if (edge) {
+              const w = getRoadWidth(edge);
+              if (w > maxW) maxW = w;
+            }
+          }
+          junctionNodes.push({
+            id,
+            x: n[0],
+            y: n[1],
+            radius: maxW * 0.5,
+            degree: edgeIds.length
+          });
+        }
+      }
+
+      // 1b. Precalculate paired divided highway edges (50-100 px apart, same ref, no links)
+      const oneways = osmMap.edges.filter(e => e.oneway && e.ref && !e.roadClass.endsWith('_link'));
+      const pairGrid = new Map();
+      const cellSize = 300;
+      for (let i = 0; i < oneways.length; i++) {
+        const e = oneways[i];
+        const b = e.bounds;
+        if (!b) continue;
+        const minCx = Math.floor(b[0] / cellSize);
+        const maxCx = Math.floor(b[2] / cellSize);
+        const minCy = Math.floor(b[1] / cellSize);
+        const maxCy = Math.floor(b[3] / cellSize);
+        for (let cx = minCx; cx <= maxCx; cx++) {
+          for (let cy = minCy; cy <= maxCy; cy++) {
+            const k = cx + ',' + cy;
+            let l = pairGrid.get(k);
+            if (!l) { l = []; pairGrid.set(k, l); }
+            l.push(e);
+          }
+        }
+      }
+
+      for (let i = 0; i < oneways.length; i++) {
+        const e1 = oneways[i];
+        const b = e1.bounds;
+        if (!b) continue;
+        const minCx = Math.floor((b[0] - 100) / cellSize);
+        const maxCx = Math.floor((b[2] + 100) / cellSize);
+        const minCy = Math.floor((b[1] - 100) / cellSize);
+        const maxCy = Math.floor((b[3] + 100) / cellSize);
+        const mid1 = e1.points[Math.floor(e1.points.length / 2)];
+        let closestE2 = null;
+        let minDist = 101;
+        const seen = new Set();
+        for (let cx = minCx; cx <= maxCx; cx++) {
+          for (let cy = minCy; cy <= maxCy; cy++) {
+            const list = pairGrid.get(cx + ',' + cy);
+            if (!list) continue;
+            for (let j = 0; j < list.length; j++) {
+              const e2 = list[j];
+              if (e2.id === e1.id || seen.has(e2.id) || e2.ref !== e1.ref) continue;
+              seen.add(e2.id);
+              const mid2 = e2.points[Math.floor(e2.points.length / 2)];
+              const d = Math.hypot(mid1[0] - mid2[0], mid1[1] - mid2[1]);
+              if (d >= 50 && d <= 100 && d < minDist) {
+                minDist = d;
+                closestE2 = e2;
+              }
+            }
+          }
+        }
+        if (closestE2) {
+          e1.pairedEdgeId = closestE2.id;
+          e1.medianDist = minDist;
+          const mid2 = closestE2.points[Math.floor(closestE2.points.length / 2)];
+          const vx = mid2[0] - mid1[0];
+          const vy = mid2[1] - mid1[1];
+          const mIdx = Math.floor(e1.points.length / 2);
+          const pPrev = e1.points[Math.max(0, mIdx - 1)];
+          const pNext = e1.points[Math.min(e1.points.length - 1, mIdx + 1)];
+          const tdx = pNext[0] - pPrev[0];
+          const tdy = pNext[1] - pPrev[1];
+          const tlen = Math.hypot(tdx, tdy) || 1;
+          const nx = -tdy / tlen;
+          const ny = tdx / tlen;
+          const dot = vx * nx + vy * ny;
+          e1.medianSide = dot >= 0 ? 1 : -1;
+        }
+      }
+
+      // 1c. Dynamic road signs placed ~150 px before interchanges/junctions on the right
+      ROAD_SIGNS.length = 0;
+      const majorClasses = new Set(['motorway', 'trunk', 'primary', 'secondary']);
+      const placedSigns = [];
+      for (let i = 0; i < osmMap.edges.length; i++) {
+        const edge = osmMap.edges[i];
+        if (!majorClasses.has(edge.roadClass) || edge.length < 120) continue;
+        const pts = edge.points;
+        if (!pts || pts.length < 2) continue;
+
+        const toNode = osmMap.nodes[edge.to];
+        if (!toNode) continue;
+        const connected = toNode[2] || [];
+        if (connected.length < 2) continue;
+
+        let hasBranch = connected.length >= 3;
+        let branchRef = null;
+        let branchName = null;
+        for (let j = 0; j < connected.length; j++) {
+          const ce = edgeMap.get(connected[j]);
+          if (!ce || ce.id === edge.id) continue;
+          if (ce.roadClass && ce.roadClass.endsWith('_link')) hasBranch = true;
+          if (ce.ref && ce.ref !== edge.ref) branchRef = ce.ref;
+          if (ce.name && ce.name !== edge.name) branchName = ce.name;
+        }
+        if (!hasBranch) continue;
+
+        // Position ~150 px before junction along travel direction
+        const targetDist = Math.max(edge.length * 0.4, edge.length - 150);
+        const pos = getPositionAlongPolyline(pts, targetDist);
+        if (!pos) continue;
+
+        const roadW = getRoadWidth(edge);
+        // Right normal: (-sin(angle), cos(angle))
+        const nx = -Math.sin(pos.angle);
+        const ny = Math.cos(pos.angle);
+        const shoulderX = pos.x + nx * (roadW * 0.5);
+        const shoulderY = pos.y + ny * (roadW * 0.5);
+        const signX = pos.x + nx * (roadW * 0.5 + 20);
+        const signY = pos.y + ny * (roadW * 0.5 + 20);
+
+        // Deduplicate nearby signs
+        let tooClose = false;
+        for (let p = 0; p < placedSigns.length; p++) {
+          if (Math.hypot(signX - placedSigns[p].x, signY - placedSigns[p].y) < 250) {
+            tooClose = true;
+            break;
+          }
+        }
+        if (tooClose) continue;
+
+        const mainText = edge.ref || (edge.name ? edge.name.slice(0, 16).toUpperCase() : 'TRASEU');
+        let subText = 'INTERSECȚIE 150m ↗';
+        if (branchRef) {
+          subText = `${branchRef} ↗  |  ${mainText} ↑`;
+        } else if (branchName) {
+          subText = `${branchName.slice(0, 14)} ↗`;
+        }
+
+        const signObj = {
+          x: signX,
+          y: signY,
+          roadX: shoulderX,
+          roadY: shoulderY,
+          angle: pos.angle,
+          main: mainText,
+          sub: subText,
+          speed: edge.maxspeed || (edge.roadClass === 'trunk' || edge.roadClass === 'motorway' ? 90 : 70),
+          roadClass: edge.roadClass
+        };
+        placedSigns.push(signObj);
+        ROAD_SIGNS.push(signObj);
+      }
+    }
+
+    // 2. Depots
     if (osmMap && Array.isArray(osmMap.depots)) {
       for (const d of osmMap.depots) {
         if (!d.nearestNodeId && typeof findNearestNode === 'function') {
@@ -905,21 +596,102 @@
       }
     }
 
+    // 3. Fuels: deduplicate (<120 px) and offset along road normal by (roadWidth/2 + 40 px)
     if (osmMap && Array.isArray(osmMap.fuels)) {
-      for (const f of osmMap.fuels) {
+      const sortedFuels = [...osmMap.fuels].sort((a, b) => {
+        const aB = a.brand ? 1 : 0;
+        const bB = b.brand ? 1 : 0;
+        return bB - aB;
+      });
+
+      const deduped = [];
+      for (const f of sortedFuels) {
+        let dup = false;
+        for (const kept of deduped) {
+          if (Math.hypot(f.x - kept.x, f.y - kept.y) < 120) {
+            dup = true;
+            break;
+          }
+        }
+        if (!dup) deduped.push(f);
+      }
+
+      for (const f of deduped) {
         if (!f.nearestNodeId && typeof findNearestNode === 'function') {
           f.nearestNodeId = findNearestNode(f.x, f.y);
         }
-        FUELS.push(f);
+
+        let bestDistSq = Infinity;
+        let bestEdge = null;
+        let bestPt = null;
+        let bestNormal = null;
+        let bestAngle = 0;
+
+        if (osmMap.edges) {
+          for (let e = 0; e < osmMap.edges.length; e++) {
+            const edge = osmMap.edges[e];
+            const b = edge.bounds;
+            if (b && (f.x < b[0] - 250 || f.x > b[2] + 250 || f.y < b[1] - 250 || f.y > b[3] + 250)) continue;
+            const pts = edge.points;
+            if (!pts || pts.length < 2) continue;
+            for (let i = 0; i < pts.length - 1; i++) {
+              const x1 = pts[i][0], y1 = pts[i][1];
+              const x2 = pts[i + 1][0], y2 = pts[i + 1][1];
+              const dx = x2 - x1, dy = y2 - y1;
+              const l2 = dx * dx + dy * dy;
+              if (l2 === 0) continue;
+              let t = ((f.x - x1) * dx + (f.y - y1) * dy) / l2;
+              t = Math.max(0, Math.min(1, t));
+              const qx = x1 + t * dx;
+              const qy = y1 + t * dy;
+              const dSq = (f.x - qx) * (f.x - qx) + (f.y - qy) * (f.y - qy);
+              if (dSq < bestDistSq) {
+                bestDistSq = dSq;
+                bestEdge = edge;
+                const L = Math.hypot(dx, dy);
+                const nx = -dy / L;
+                const ny = dx / L;
+                bestAngle = Math.atan2(dy, dx);
+                bestPt = { x: qx, y: qy };
+                const dot = (f.x - qx) * nx + (f.y - qy) * ny;
+                const side = dot < 0 ? -1 : 1;
+                bestNormal = { nx: nx * side, ny: ny * side };
+              }
+            }
+          }
+        }
+
+        let posX = f.x;
+        let posY = f.y;
+        let angle = 0;
+        if (bestEdge && bestPt && bestNormal) {
+          const w = getRoadWidth(bestEdge);
+          const offsetDist = w * 0.5 + 40;
+          posX = bestPt.x + bestNormal.nx * offsetDist;
+          posY = bestPt.y + bestNormal.ny * offsetDist;
+          angle = bestAngle;
+        }
+
+        const fuelObj = {
+          ...f,
+          x: posX,
+          y: posY,
+          rawX: f.x,
+          rawY: f.y,
+          angle
+        };
+
+        FUELS.push(fuelObj);
         GEOGRAPHY.pois.push({
-          id: f.id,
-          name: f.name || `АЗС ${f.brand || ''}`.trim(),
-          brand: f.brand,
+          id: fuelObj.id,
+          name: fuelObj.name || (fuelObj.brand ? 'АЗС ' + fuelObj.brand : ''),
+          brand: fuelObj.brand || '',
           type: 'gas',
-          x: f.x,
-          y: f.y,
-          label: f.brand || f.name || 'АЗС',
-          nearestNodeId: f.nearestNodeId
+          x: posX,
+          y: posY,
+          angle,
+          label: fuelObj.brand || fuelObj.name || '',
+          nearestNodeId: fuelObj.nearestNodeId
         });
       }
     }
@@ -930,17 +702,17 @@
   const MapSystem = {
     ETS2_SCALE,
     realKmToUnits,
-    ROADS: BAKED_ROADS,
-    PRIMARY_ROAD: BAKED_ROADS[0],
-    SECONDARY_ROADS: BAKED_ROADS.slice(1),
+    getEdgeLanes,
+    getRoadWidth,
+    junctionNodes,
     OSM: osmMap,
+    edges: osmMap ? osmMap.edges : [],
     findRoute,
     findNearestNode,
     getPositionAlongPolyline,
     CITIES: (osmMap && osmMap.cities && osmMap.cities.length > 10) ? osmMap.cities : CITIES,
     DEPOTS,
     FUELS,
-    JUNCTIONS,
     ROAD_SIGNS,
     CITY_BLOCKS,
     GEOGRAPHY,

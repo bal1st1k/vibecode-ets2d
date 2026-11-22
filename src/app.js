@@ -27,6 +27,11 @@
   const audio = new ETSAudio();
   const gameCanvas = $('#game-canvas');
   const renderer = new ETSRenderer(gameCanvas);
+  if (typeof window !== 'undefined') {
+    window.sim = sim;
+    window.renderer = renderer;
+    window.executeTeleport = executeTeleport;
+  }
   const previewCanvas = $('#preview-canvas');
   const worldMapCanvas = $('#world-map-canvas');
 
@@ -400,20 +405,6 @@
         }
         ctx.stroke();
       }
-    } else if (map.ROADS) {
-      // Fallback schematic roads
-      map.ROADS.forEach(road => {
-        const pts = road.dense || road.points;
-        if (!pts || pts.length < 2) return;
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 4 * gmapZoom;
-        ctx.beginPath();
-        pts.forEach((p, i) => {
-          const { cx, cy } = worldToGmap(p.x, p.y, cw, ch);
-          if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
-        });
-        ctx.stroke();
-      });
     }
 
     // 5. Active Dijkstra / A* Navigation Route
@@ -1313,7 +1304,7 @@
     },
     'chisinau-center': {
       name: 'Кишинёв: Проспект Calea Orheiului',
-      x: 1200, y: 3000, angle: -1.57, speed: 50,
+      x: 1172, y: 3028, angle: -2.35, speed: 50,
       desc: 'Выезд из города на трассу M2'
     },
     'centura-chisinau': {
@@ -1323,17 +1314,17 @@
     },
     'cricova-cloverleaf': {
       name: 'Крикова: Развязка M1 / M2',
-      x: 1700, y: -2200, angle: -1.57, speed: 60,
+      x: 1568, y: -2263, angle: -1.13, speed: 60,
       desc: 'Крупнейший путепровод Молдовы'
     },
     'm2-magdacesti': {
       name: 'Трасса M2: Скоростная прямая (Мэгдачешть)',
-      x: 1400, y: -4800, angle: -1.57, speed: 90,
+      x: 1244, y: -4736, angle: -1.96, speed: 90,
       desc: 'Скоростной замер динамики 0–90 км/ч'
     },
     'm2-serpentine': {
       name: 'Пересечина: Серпантин M2',
-      x: -650, y: -11900, angle: -1.45, speed: 45,
+      x: -296, y: -12732, angle: -1.15, speed: 45,
       desc: 'Крутые повороты и проверка заноса полуприцепа'
     },
     'm2-gas': {
@@ -1461,26 +1452,21 @@
       ctx.setLineDash([]);
     }
 
-    // Draw ALL Road Splines from map.ROADS
-    if (map.ROADS) {
-      map.ROADS.forEach(road => {
-        const pts = road.dense || road.points;
+    // Draw OSM Road Network
+    const adminEdges = (map.OSM && map.OSM.edges) || map.edges || [];
+    if (adminEdges.length > 0) {
+      adminEdges.forEach(edge => {
+        const pts = edge.points;
         if (!pts || pts.length < 2) return;
-        const isHighway = road.category === 'highway';
-
-        ctx.strokeStyle = isHighway ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255, 255, 255, 0.08)';
-        ctx.lineWidth = isHighway ? 8 : 4;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        pts.forEach((p, i) => {
-          const { cx, cy } = projectAdmin(p.x, p.y);
-          if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
-        });
-        ctx.stroke();
+        const isHighway = edge.roadClass === 'motorway' || edge.roadClass === 'trunk' || edge.roadClass === 'primary';
 
         ctx.strokeStyle = isHighway ? '#f59e0b' : '#64748b';
-        ctx.lineWidth = isHighway ? 4 : 2;
+        ctx.lineWidth = isHighway ? 2.5 : 1.2;
+        ctx.beginPath();
+        pts.forEach((p, i) => {
+          const { cx, cy } = projectAdmin(p[0], p[1]);
+          if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+        });
         ctx.stroke();
       });
     }

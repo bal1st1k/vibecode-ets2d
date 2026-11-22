@@ -257,12 +257,13 @@ check('index.html contains all critical UI elements without null exceptions', ()
   assert.match(htmlSource, /id="modal-map-canvas"/);
 });
 
-check('map.js contains full Moldova network of interconnected drivable roads baked with normals', () => {
-  assert(sandbox.ETSMap.ROADS.length >= 20, `Road count (${sandbox.ETSMap.ROADS.length}) covers full country network`);
-  for (const road of sandbox.ETSMap.ROADS) {
-    assert(road.dense && road.dense.length > 2, `Road ${road.id} has dense points`);
-    assert(road.bounds, `Road ${road.id} has bounds`);
-    assert(road.dense[0].nx !== undefined, `Road ${road.id} has normal vectors`);
+check('map.js contains full Moldova network of interconnected OSM roads', () => {
+  const edges = (sandbox.ETSMap.OSM && sandbox.ETSMap.OSM.edges) || sandbox.ETSMap.edges;
+  assert(edges && edges.length >= 10000, `OSM edge count (${edges?.length}) covers full country network`);
+  for (let i = 0; i < 50; i++) {
+    const edge = edges[i];
+    assert(edge.points && edge.points.length >= 2, `Edge ${edge.id} has points`);
+    assert(edge.bounds, `Edge ${edge.id} has bounds`);
   }
 });
 
@@ -282,11 +283,10 @@ check('index.html contains Google Maps Navigation UI components', () => {
   assert.match(htmlSource, /class="gmaps-nav-header"/);
 });
 
-check('map.js contains geographical features (rivers, secondary roads, pois)', () => {
+check('map.js contains geographical features (rivers, pois, cities)', () => {
   assert(sandbox.ETSMap.GEOGRAPHY);
   assert(sandbox.ETSMap.GEOGRAPHY.rautRiver.length > 0);
   assert(sandbox.ETSMap.GEOGRAPHY.pois.length > 0);
-  assert(sandbox.ETSMap.SECONDARY_ROADS.length > 0);
   assert(sandbox.ETSMap.CITIES.length >= 5);
 });
 

@@ -52,24 +52,37 @@
         this.turnBlinkTimer = 0;
       }
 
-      // Dynamic camera zoom based on speed
+      // Dynamic camera zoom based on speed: 0 km/h: 1.15, 90 km/h: ~0.80 (25-35% zoom out)
       const speedKmh = sim.currentSpeedKmh || 0;
-      this.targetZoom = clamp(1.1 - (speedKmh / 120) * 0.4, 0.65, 1.2);
-      this.zoom += (this.targetZoom - this.zoom) * clamp(dt * 3.5, 0, 1);
+      const speedRatio = clamp(speedKmh / 90, 0, 1.25);
+      const baseZoom = 1.15;
+      this.targetZoom = baseZoom * (1 - 0.30 * speedRatio);
+      this.zoom += (this.targetZoom - this.zoom) * clamp(dt * 3.0, 0, 1);
 
-      // Smooth lookahead camera
-      const lookahead = Math.min(240, speedKmh * 2.2);
-      const camX = t.x + Math.cos(t.angle) * lookahead;
-      const camY = t.y + Math.sin(t.angle) * lookahead;
+      // Smooth camera forward lookahead up to 25% of screen height
+      const worldHeight = this.height / this.zoom;
+      const maxForwardOffset = worldHeight * 0.25;
+      const forwardRatio = clamp(speedKmh / 80, 0.2, 1.0);
+      const targetCamX = t.x + Math.cos(t.angle) * (maxForwardOffset * forwardRatio);
+      const targetCamY = t.y + Math.sin(t.angle) * (maxForwardOffset * forwardRatio);
+
+      if (this.camX === undefined || this.camY === undefined) {
+        this.camX = targetCamX;
+        this.camY = targetCamY;
+      } else {
+        const camLerp = clamp(dt * 4.0, 0, 1);
+        this.camX += (targetCamX - this.camX) * camLerp;
+        this.camY += (targetCamY - this.camY) * camLerp;
+      }
 
       // Viewport culling bounds (in world units)
       const halfW = (this.width / (2 * this.zoom)) + 180;
       const halfH = (this.height / (2 * this.zoom)) + 180;
       const view = {
-        minX: camX - halfW,
-        maxX: camX + halfW,
-        minY: camY - halfH,
-        maxY: camY + halfH
+        minX: this.camX - halfW,
+        maxX: this.camX + halfW,
+        minY: this.camY - halfH,
+        maxY: this.camY + halfH
       };
 
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -81,18 +94,15 @@
       ctx.save();
       ctx.translate(this.width * 0.5, this.height * 0.5);
       ctx.scale(this.zoom, this.zoom);
-      ctx.translate(-camX, -camY);
+      ctx.translate(-this.camX, -this.camY);
 
       // 2. Draw Terrain (meadows, agricultural parcels, forests, rivers)
       this._drawTerrain(ctx, map, view);
 
-      // 3. Draw Seamless Paved Junctions & Roundabouts
-      this._drawJunctions(ctx, map.JUNCTIONS, view);
+      // 3. Draw Roads (asphalt, edge markings, seamless junctions, center dashed lines)
+      this._drawRoads(ctx, map, view);
 
-      // 4. Draw Roads (asphalt, shoulders, road markings)
-      this._drawRoads(ctx, map.ROADS, view);
-
-      // 5. Draw Bridges across rivers
+      // 4. Draw Bridges across rivers
       this._drawBridges(ctx, map, view);
 
       // 6. Draw City Architecture, Buildings & Logistics Depots
@@ -203,161 +213,330 @@
       }
     }
 
-    // ==============================================================
-    // SEAMLESS PAVED JUNCTIONS & ROUNDABOUTS
-    // ==============================================================
+    // Helper: road lanes lookup: oneway trunk/primary = 2, others = 1; two-way = 2; max 3 lanes; links = 1
+    getEdgeLanes(edge) {
+      if (!edge) return 2;
+      const rc = edge.roadClass || '';
+      if (rc.endsWith('_link')) {
+        return 1;
+      }
+      let lanes = 2;
+      if (edge.oneway) {
+        if (edge.lanes && edge.lanes > 0) lanes = edge.lanes;
+        else if (rc === 'motorway' || rc === 'trunk' || rc === 'primary') lanes = 2;
+        else lanes = 1;
+      } else {
+        if (edge.lanes && edge.lanes > 0) lanes = edge.lanes;
+        else lanes = 2;
+      }
+      return Math.min(3, Math.max(1, lanes));
+    }
 
-    _drawJunctions(ctx, junctions, view) {
-      if (!junctions) return;
-      for (const j of junctions) {
-        const rad = j.radius || 120;
-        if (j.x + rad < view.minX || j.x - rad > view.maxX || j.y + rad < view.minY || j.y - rad > view.maxY) continue;
+    // Helper: road width calculation: lanes * 36 + shoulders of 10 px each side for trunk/primary/secondary. Links = 36 px (no shoulder).
+    getRoadWidth(edgeOrClass, maybeLanes, maybeOneway) {
+      let rc, lanes, oneway;
+      if (typeof edgeOrClass === 'object' && edgeOrClass !== null) {
+        rc = edgeOrClass.roadClass || '';
+        lanes = this.getEdgeLanes(edgeOrClass);
+        oneway = Boolean(edgeOrClass.oneway);
+      } else {
+        rc = edgeOrClass || '';
+        oneway = Boolean(maybeOneway);
+        lanes = maybeLanes || (oneway ? ((rc === 'motorway' || rc === 'trunk' || rc === 'primary') ? 2 : 1) : 2);
+      }
+      if (rc.endsWith('_link')) {
+        return 36;
+      }
+      lanes = Math.min(3, Math.max(1, lanes));
+      const hasShoulder = rc === 'motorway' || rc === 'trunk' || rc === 'primary' || rc === 'secondary';
+      const shoulder = hasShoulder ? 10 : 0;
+      return lanes * 36 + shoulder * 2;
+    }
 
-        // Asphalt circle base connecting all intersecting roads
-        ctx.fillStyle = '#181e23';
-        ctx.beginPath();
-        ctx.arc(j.x, j.y, rad, 0, Math.PI * 2);
-        ctx.fill();
+    _getRoadTier(rc) {
+      if (!rc) return 0;
+      if (rc === 'motorway' || rc === 'trunk' || rc === 'motorway_link' || rc === 'trunk_link') return 4;
+      if (rc === 'primary' || rc === 'primary_link') return 3;
+      if (rc === 'secondary' || rc === 'secondary_link') return 2;
+      if (rc === 'tertiary' || rc === 'tertiary_link') return 1;
+      return 0; // service, residential, living_street, unclassified, other
+    }
 
-        ctx.strokeStyle = '#283139';
-        ctx.lineWidth = 3;
-        ctx.stroke();
+    _offsetPolyline(pts, offset) {
+      if (!pts || pts.length < 2) return [];
+      const n = pts.length;
+      const result = [];
+      for (let i = 0; i < n; i++) {
+        let dx, dy;
+        if (i === 0) {
+          dx = pts[1][0] - pts[0][0];
+          dy = pts[1][1] - pts[0][1];
+        } else if (i === n - 1) {
+          dx = pts[n - 1][0] - pts[n - 2][0];
+          dy = pts[n - 1][1] - pts[n - 2][1];
+        } else {
+          const dx1 = pts[i][0] - pts[i - 1][0];
+          const dy1 = pts[i][1] - pts[i - 1][1];
+          const dx2 = pts[i + 1][0] - pts[i][0];
+          const dy2 = pts[i + 1][1] - pts[i][1];
+          const l1 = Math.hypot(dx1, dy1) || 1;
+          const l2 = Math.hypot(dx2, dy2) || 1;
+          dx = dx1 / l1 + dx2 / l2;
+          dy = dy1 / l1 + dy2 / l2;
+        }
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len;
+        const ny = dx / len;
+        result.push([pts[i][0] + nx * offset, pts[i][1] + ny * offset]);
+      }
+      return result;
+    }
 
-        // Special Roundabout Design (Sens Giratoriu)
-        if (j.type === 'roundabout') {
-          // Circular dashed lane
-          ctx.save();
-          ctx.strokeStyle = 'rgba(240, 242, 236, 0.7)';
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash([14, 18]);
-          ctx.beginPath();
-          ctx.arc(j.x, j.y, rad * 0.72, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.restore();
+    _trimPolyline(points, trimStart, trimEnd) {
+      if (!points || points.length < 2) return null;
+      let totalLen = 0;
+      const dists = [0];
+      for (let i = 1; i < points.length; i++) {
+        const d = Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
+        totalLen += d;
+        dists.push(totalLen);
+      }
+      if (totalLen <= trimStart + trimEnd) return null;
 
-          // Center Raised Island with stone curb and grass
-          ctx.fillStyle = '#374151'; // Concrete Curb
-          ctx.beginPath();
-          ctx.arc(j.x, j.y, rad * 0.44, 0, Math.PI * 2);
-          ctx.fill();
+      const targetStart = trimStart;
+      const targetEnd = totalLen - trimEnd;
+      const result = [];
 
-          ctx.fillStyle = '#14291a'; // Center Island Grass
-          ctx.beginPath();
-          ctx.arc(j.x, j.y, rad * 0.40, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Roundabout Decorative Center Emblem
-          ctx.fillStyle = '#f59e0b';
-          ctx.beginPath();
-          ctx.arc(j.x, j.y, 6, 0, Math.PI * 2);
-          ctx.fill();
+      for (let i = 1; i < points.length; i++) {
+        if (dists[i] >= targetStart) {
+          const segLen = dists[i] - dists[i - 1];
+          const t = segLen > 0 ? (targetStart - dists[i - 1]) / segLen : 0;
+          result.push([
+            points[i - 1][0] + (points[i][0] - points[i - 1][0]) * t,
+            points[i - 1][1] + (points[i][1] - points[i - 1][1]) * t
+          ]);
+          for (let j = i; j < points.length; j++) {
+            if (dists[j] < targetEnd) {
+              result.push([points[j][0], points[j][1]]);
+            } else {
+              const segEndLen = dists[j] - dists[j - 1];
+              const te = segEndLen > 0 ? (targetEnd - dists[j - 1]) / segEndLen : 0;
+              result.push([
+                points[j - 1][0] + (points[j][0] - points[j - 1][0]) * te,
+                points[j - 1][1] + (points[j][1] - points[j - 1][1]) * te
+              ]);
+              break;
+            }
+          }
+          break;
         }
       }
+      return result;
     }
 
     // ==============================================================
-    // ROADS & HIGHWAYS (Asphalt, Shoulders, Markings)
+    // HIGHWAYS & ROAD NETWORK (Layered Class Rendering & Multi-Lane Markings)
     // ==============================================================
 
-    _drawRoads(ctx, roads, view) {
-      // 1. Draw Real OpenStreetMap Road Network
-      if (this.osmEdges && this.osmEdges.length > 0) {
-        for (let i = 0; i < this.osmEdges.length; i++) {
-          const e = this.osmEdges[i];
-          const b = e.bounds;
-          if (b && (b[2] < view.minX || b[0] > view.maxX || b[3] < view.minY || b[1] > view.maxY)) continue;
-          const pts = e.points;
-          if (!pts || pts.length < 2) continue;
+    _drawRoads(ctx, map, view) {
+      const edges = (map && map.OSM && map.OSM.edges) || (map && map.edges) || this.osmEdges || [];
+      if (!edges || edges.length === 0) return;
 
-          const isMajor = e.roadClass === 'motorway' || e.roadClass === 'trunk' || e.roadClass === 'primary';
-          const w = isMajor ? 120 : e.roadClass === 'secondary' ? 85 : 60;
-
-          // Asphalt base
-          ctx.strokeStyle = '#181e23';
-          ctx.lineWidth = w;
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let p = 1; p < pts.length; p++) ctx.lineTo(pts[p][0], pts[p][1]);
-          ctx.stroke();
-
-          // Subtle shoulder borders
-          ctx.strokeStyle = '#283139';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-
-          // Center dashed line
-          ctx.save();
-          ctx.strokeStyle = 'rgba(240, 242, 236, 0.75)';
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash([20, 24]);
-          ctx.beginPath();
-          ctx.moveTo(pts[0][0], pts[0][1]);
-          for (let p = 1; p < pts.length; p++) ctx.lineTo(pts[p][0], pts[p][1]);
-          ctx.stroke();
-          ctx.restore();
-        }
+      const visibleEdges = [];
+      for (let i = 0; i < edges.length; i++) {
+        const e = edges[i];
+        const b = e.bounds;
+        if (b && (b[2] < view.minX || b[0] > view.maxX || b[3] < view.minY || b[1] > view.maxY)) continue;
+        const pts = e.points;
+        if (!pts || pts.length < 2) continue;
+        visibleEdges.push(e);
       }
 
-      if (!roads) return;
-      for (const road of roads) {
-        const b = road.bounds;
-        if (b && (b.maxX < view.minX || b.minX > view.maxX || b.maxY < view.minY || b.minY > view.maxY)) continue;
+      if (visibleEdges.length === 0) return;
 
-        const pts = road.dense || road.points;
-        if (!pts || pts.length < 2) continue;
+      const getW = (edge) => (map && map.getRoadWidth ? map.getRoadWidth(edge) : this.getRoadWidth(edge));
+      const getLanes = (edge) => (map && map.getEdgeLanes ? map.getEdgeLanes(edge) : this.getEdgeLanes(edge));
 
-        const w = road.width || 120;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
 
-        // 1. Dark asphalt base
-        ctx.strokeStyle = '#181e23';
-        ctx.lineWidth = w;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+      // 0. Median strip for divided dual-carriageway highways (50-100 px between axes only)
+      // Drawn as grass/concrete fill WITHOUT white casing contour
+      for (let i = 0; i < visibleEdges.length; i++) {
+        const e = visibleEdges[i];
+        if (!e.pairedEdgeId || !e.medianSide) continue;
+        if (e.medianDist < 50 || e.medianDist > 100) continue;
+        if (e.id > e.pairedEdgeId) continue; // Draw once per pair
+
+        const w = getW(e);
+        const medianOffset = e.medianSide * (e.medianDist * 0.5);
+        const medianPts = this._offsetPolyline(e.points, medianOffset);
+        if (!medianPts || medianPts.length < 2) continue;
+
+        // Dark ground/grass median strip without white contour
+        ctx.strokeStyle = '#14241a';
+        ctx.lineWidth = Math.max(10, e.medianDist - w + 6);
         ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.moveTo(medianPts[0][0], medianPts[0][1]);
+        for (let p = 1; p < medianPts.length; p++) ctx.lineTo(medianPts[p][0], medianPts[p][1]);
         ctx.stroke();
+      }
 
-        // 2. Subtle asphalt edge borders
-        ctx.strokeStyle = '#283139';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+      // Group visible edges into 5 class tiers:
+      // Tier 0: service, residential, living_street, unclassified, other
+      // Tier 1: tertiary_link, tertiary
+      // Tier 2: secondary_link, secondary
+      // Tier 3: primary_link, primary
+      // Tier 4: trunk_link, trunk, motorway_link, motorway
+      const tiers = [[], [], [], [], []];
+      for (let i = 0; i < visibleEdges.length; i++) {
+        const tier = this._getRoadTier(visibleEdges[i].roadClass);
+        tiers[tier].push(visibleEdges[i]);
+      }
 
-        // 3. Outer Shoulder White Lines (using precomputed normals)
-        ctx.strokeStyle = 'rgba(240, 242, 236, 0.65)';
-        ctx.lineWidth = 2.5;
+      // Degree >= 3 junction lookup for trimming markings and junction asphalt circles
+      const osmNodes = (map && map.OSM && map.OSM.nodes) || (map && map.nodes) || {};
+      const isJunctionNode = (nodeId) => {
+        const n = osmNodes[nodeId];
+        return Boolean(n && Array.isArray(n[2]) && n[2].length >= 3);
+      };
 
-        if (pts[0].nx !== undefined) {
+      const junctions = (map && map.junctionNodes) || [];
+
+      // Render tier by tier from lowest (0) to highest (4)
+      for (let t = 0; t <= 4; t++) {
+        const tierEdges = tiers[t];
+        if (tierEdges.length === 0) continue;
+
+        // a) Casing (Контур): width w + 4, subtle semi-transparent light (darker, 2 px border, not white)
+        ctx.strokeStyle = 'rgba(175, 190, 200, 0.35)';
+        for (let i = 0; i < tierEdges.length; i++) {
+          const e = tierEdges[i];
+          const w = getW(e);
+          ctx.lineWidth = w + 4;
           ctx.beginPath();
-          for (let i = 0; i < pts.length; i++) {
-            const px = pts[i].x + pts[i].nx * (w * 0.47);
-            const py = pts[i].y + pts[i].ny * (w * 0.47);
-            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-          }
-          ctx.stroke();
-
-          ctx.beginPath();
-          for (let i = 0; i < pts.length; i++) {
-            const px = pts[i].x - pts[i].nx * (w * 0.47);
-            const py = pts[i].y - pts[i].ny * (w * 0.47);
-            if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-          }
+          const pts = e.points;
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let p = 1; p < pts.length; p++) ctx.lineTo(pts[p][0], pts[p][1]);
           ctx.stroke();
         }
 
-        // 4. Center Dashed Line (Skip for narrow 1-lane service ramps)
-        if (road.lanes !== 1) {
-          ctx.save();
-          ctx.strokeStyle = 'rgba(240, 242, 236, 0.85)';
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash([20, 24]);
+        // b) Asphalt (Асфальт): width w, dark asphalt core
+        ctx.strokeStyle = '#181e23';
+        for (let i = 0; i < tierEdges.length; i++) {
+          const e = tierEdges[i];
+          const w = getW(e);
+          ctx.lineWidth = w;
           ctx.beginPath();
-          ctx.moveTo(pts[0].x, pts[0].y);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          const pts = e.points;
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let p = 1; p < pts.length; p++) ctx.lineTo(pts[p][0], pts[p][1]);
           ctx.stroke();
+        }
+
+        // Seamless junction circles for this tier at degree >= 3 intersections
+        ctx.fillStyle = '#181e23';
+        for (let i = 0; i < junctions.length; i++) {
+          const j = junctions[i];
+          if (j.x + j.radius < view.minX || j.x - j.radius > view.maxX || j.y + j.radius < view.minY || j.y - j.radius > view.maxY) continue;
+          ctx.beginPath();
+          ctx.arc(j.x, j.y, j.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Steel guardrails along inner edges of divided paired highways of this tier
+        for (let i = 0; i < tierEdges.length; i++) {
+          const e = tierEdges[i];
+          if (!e.pairedEdgeId || !e.medianSide) continue;
+          if (e.medianDist < 50 || e.medianDist > 100) continue;
+
+          const totalW = getW(e);
+          const gOffset = e.medianSide * (totalW * 0.5 - 1);
+          const gPts = this._offsetPolyline(e.points, gOffset);
+          if (!gPts || gPts.length < 2) continue;
+
+          // Continuous steel W-beam guardrail line
+          ctx.save();
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(gPts[0][0], gPts[0][1]);
+          for (let p = 1; p < gPts.length; p++) ctx.lineTo(gPts[p][0], gPts[p][1]);
+          ctx.stroke();
+
+          // Short upright barrier posts every 16 px
+          ctx.strokeStyle = '#475569';
+          ctx.lineWidth = 2;
+          let distSincePost = 16;
+          for (let p = 1; p < gPts.length; p++) {
+            const dx = gPts[p][0] - gPts[p - 1][0];
+            const dy = gPts[p][1] - gPts[p - 1][1];
+            const segLen = Math.hypot(dx, dy);
+            if (segLen === 0) continue;
+            const nx = -dy / segLen;
+            const ny = dx / segLen;
+
+            let traveled = 0;
+            while (traveled + (16 - distSincePost) <= segLen) {
+              traveled += (16 - distSincePost);
+              distSincePost = 0;
+              const px = gPts[p - 1][0] + (dx / segLen) * traveled;
+              const py = gPts[p - 1][1] + (dy / segLen) * traveled;
+              ctx.beginPath();
+              ctx.moveTo(px - nx * 3, py - ny * 3);
+              ctx.lineTo(px + nx * 3, py + ny * 3);
+              ctx.stroke();
+            }
+            distSincePost += (segLen - traveled);
+          }
           ctx.restore();
+        }
+
+        // c) Markings (Разметка) of this tier: trimmed near degree >= 3 nodes by w/2 + 10 px
+        for (let i = 0; i < tierEdges.length; i++) {
+          const e = tierEdges[i];
+          const lanes = getLanes(e);
+          if (lanes < 2) continue;
+
+          const w = getW(e);
+          const carriagewayW = lanes * 36;
+          const halfC = carriagewayW * 0.5;
+
+          const fromJunc = isJunctionNode(e.from);
+          const toJunc = isJunctionNode(e.to);
+          const trimStart = fromJunc ? (w * 0.5 + 10) : 0;
+          const trimEnd = toJunc ? (w * 0.5 + 10) : 0;
+
+          const trimmed = (trimStart > 0 || trimEnd > 0)
+            ? this._trimPolyline(e.points, trimStart, trimEnd)
+            : e.points;
+
+          if (!trimmed || trimmed.length < 2) continue;
+
+          for (let k = 1; k < lanes; k++) {
+            const offset = -halfC + k * 36;
+            const linePts = this._offsetPolyline(trimmed, offset);
+            if (!linePts || linePts.length < 2) continue;
+
+            ctx.save();
+            if (!e.oneway && lanes >= 4 && k === Math.floor(lanes / 2)) {
+              // Solid center line on 4+ lane two-way roads
+              ctx.strokeStyle = 'rgba(240, 242, 236, 0.95)';
+              ctx.lineWidth = 3;
+              ctx.setLineDash([]);
+            } else {
+              // Dashed line between lanes
+              ctx.strokeStyle = 'rgba(240, 242, 236, 0.85)';
+              ctx.lineWidth = 2.2;
+              ctx.setLineDash([18, 22]);
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(linePts[0][0], linePts[0][1]);
+            for (let p = 1; p < linePts.length; p++) ctx.lineTo(linePts[p][0], linePts[p][1]);
+            ctx.stroke();
+            ctx.restore();
+          }
         }
       }
     }
@@ -472,8 +651,8 @@
         ctx.restore();
       }
 
-      // 3. Gas Stations (Rompetrol Peresecina, Petrom, etc.)
-      const pois = map.GEOGRAPHY?.pois || [];
+      // 3. Gas Stations (Deduplicated & offset from road centerline by roadWidth/2 + 40 px)
+      const pois = (map && map.GEOGRAPHY && map.GEOGRAPHY.pois) || [];
       for (const poi of pois) {
         if (poi.type !== 'gas') continue;
         if (poi.x + 120 < view.minX || poi.x - 120 > view.maxX || poi.y + 120 < view.minY || poi.y - 120 > view.maxY) continue;
@@ -481,88 +660,126 @@
         ctx.save();
         ctx.translate(poi.x, poi.y);
 
-        // Gas Station Canopy Roof (Red/Orange canopy)
-        ctx.fillStyle = '#b91c1c';
-        ctx.fillRect(-55, -35, 110, 70);
+        if (this.zoom < 0.25) {
+          // Far zoom: small badge icon
+          ctx.fillStyle = '#dc2626';
+          ctx.beginPath();
+          ctx.arc(0, 0, 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 8px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⛽', 0, 0);
+        } else {
+          // Close zoom: ~60x36 px canopy aligned with road
+          if (poi.angle !== undefined) ctx.rotate(poi.angle);
 
-        ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 2.5;
-        ctx.strokeRect(-55, -35, 110, 70);
+          // Canopy roof
+          ctx.fillStyle = '#b91c1c';
+          ctx.fillRect(-30, -18, 60, 36);
 
-        // Fuel pump concrete islands
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(-35, -12, 14, 24);
-        ctx.fillRect(20, -12, 14, 24);
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(-30, -18, 60, 36);
 
-        // Canopy Brand Sign
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 9px Roboto, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(poi.label || 'PECO', 0, 4);
+          // Fuel pump concrete islands
+          ctx.fillStyle = '#e2e8f0';
+          ctx.fillRect(-20, -6, 8, 12);
+          ctx.fillRect(12, -6, 8, 12);
+
+          // Canopy Brand Sign (no "АЗС" text if no brand/name)
+          const brandText = poi.brand || poi.name || '';
+          if (brandText && brandText !== 'АЗС') {
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 8px Roboto, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(brandText, 0, 0);
+          }
+        }
 
         ctx.restore();
       }
     }
 
     // ==============================================================
-    // HIGHWAY OVERHEAD SIGNS & ROAD PROPS
+    // HIGHWAY ROADSIDE DIRECTION SIGNS & SPEED LIMITS
     // ==============================================================
 
     _drawRoadSigns(ctx, signs, view) {
-      if (!signs) return;
-      for (const s of signs) {
-        if (s.x + 150 < view.minX || s.x - 150 > view.maxX || s.y + 150 < view.minY || s.y - 150 > view.maxY) continue;
+      if (!signs || signs.length === 0) return;
+      for (let i = 0; i < signs.length; i++) {
+        const s = signs[i];
+        if (s.x + 100 < view.minX || s.x - 100 > view.maxX || s.y + 100 < view.minY || s.y - 100 > view.maxY) continue;
+
+        // Draw mounting post from road shoulder to sign base
+        if (s.roadX !== undefined && s.roadY !== undefined) {
+          ctx.strokeStyle = '#475569';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(s.roadX, s.roadY);
+          ctx.lineTo(s.x, s.y);
+          ctx.stroke();
+        }
 
         ctx.save();
         ctx.translate(s.x, s.y);
-        ctx.rotate(s.angle);
 
-        // Overhead Metal Gantry Beam across the road
-        ctx.strokeStyle = '#475569';
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.moveTo(-75, 0); ctx.lineTo(75, 0);
-        ctx.stroke();
+        // Keep sign text upright and readable: flip by 180 deg if pointing westward
+        let drawAngle = s.angle;
+        if (Math.cos(drawAngle) < -0.05) {
+          drawAngle = drawAngle > 0 ? drawAngle - Math.PI : drawAngle + Math.PI;
+        }
+        ctx.rotate(drawAngle);
 
-        // Gantry upright posts
+        // Sign Pole base
         ctx.fillStyle = '#334155';
-        ctx.fillRect(-78, -4, 6, 8);
-        ctx.fillRect(72, -4, 6, 8);
-
-        // Green Highway Direction Signboard
-        ctx.fillStyle = '#15803d'; // European Motorway Green
         ctx.beginPath();
-        ctx.roundRect(-65, -38, 130, 36, 4);
+        ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Signboard: green for motorway/trunk, blue for primary/secondary
+        const isHighway = s.roadClass === 'motorway' || s.roadClass === 'trunk';
+        ctx.fillStyle = isHighway ? '#15803d' : '#1d4ed8';
+        ctx.beginPath();
+        ctx.roundRect(-42, -14, 84, 28, 4);
         ctx.fill();
 
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Sign text
+        // Main destination / road ref text
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 10px Roboto, sans-serif';
+        ctx.font = 'bold 9px Roboto, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(s.main, 0, -22);
+        ctx.textBaseline = 'middle';
+        ctx.fillText(s.main, 0, -3);
 
-        ctx.fillStyle = '#fef08a'; // Sub destination / arrows in yellow
-        ctx.font = '8.5px Roboto, sans-serif';
-        ctx.fillText(s.sub, 0, -8);
+        // Subtext / turn directions
+        if (s.sub) {
+          ctx.fillStyle = '#fef08a';
+          ctx.font = '7.5px Roboto, sans-serif';
+          ctx.fillText(s.sub, 0, 7);
+        }
 
-        // Speed limit circle sign on right gantry post
+        // Speed limit circle attached on the right
         if (s.speed) {
           ctx.fillStyle = '#ffffff';
           ctx.beginPath();
-          ctx.arc(88, -18, 12, 0, Math.PI * 2);
+          ctx.arc(48, 0, 9, 0, Math.PI * 2);
           ctx.fill();
 
-          ctx.strokeStyle = '#dc2626'; // Red ring
-          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#dc2626';
+          ctx.lineWidth = 2.5;
           ctx.stroke();
 
           ctx.fillStyle = '#0f172a';
-          ctx.font = 'bold 9px Roboto, monospace';
-          ctx.fillText(String(s.speed), 88, -14);
+          ctx.font = 'bold 8px Roboto, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(s.speed), 48, 0);
         }
 
         ctx.restore();
