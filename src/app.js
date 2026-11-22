@@ -102,6 +102,7 @@
     window.navigate = navigate;
     window.renderDealer = renderDealer;
     window.renderJobMarket = renderJobMarket;
+    window.renderGoogleMaps = renderGoogleMaps;
   }
 
   function updateWalletDisplays() {
@@ -153,6 +154,71 @@
   let isDraggingGmap = false;
   let gmapDragStart = { x: 0, y: 0 };
   let gmapPulseTimer = 0;
+
+  // Cached tier buckets for road batch rendering
+  let gmapTierBuckets = null;
+  let gmapTierSourceEdges = null;
+
+  function getGmapTierBuckets(osmEdges) {
+    if (gmapTierBuckets && gmapTierSourceEdges === osmEdges) {
+      return gmapTierBuckets;
+    }
+    const tiers = [[], [], [], [], []]; // 0: motorway, 1: trunk, 2: primary, 3: secondary, 4: tertiary/other
+    for (let i = 0; i < osmEdges.length; i++) {
+      const e = osmEdges[i];
+      const rc = e.roadClass;
+      if (rc === 'motorway' || rc === 'motorway_link') {
+        tiers[0].push(e);
+      } else if (rc === 'trunk' || rc === 'trunk_link') {
+        tiers[1].push(e);
+      } else if (rc === 'primary' || rc === 'primary_link') {
+        tiers[2].push(e);
+      } else if (rc === 'secondary' || rc === 'secondary_link') {
+        tiers[3].push(e);
+      } else {
+        tiers[4].push(e);
+      }
+    }
+    gmapTierBuckets = tiers;
+    gmapTierSourceEdges = osmEdges;
+    return tiers;
+  }
+
+  // Cached A* Navigation Route for Google Maps Viewport
+  let gmapCachedRoute = null;
+  let gmapCachedTargetId = null;
+  let gmapCachedTruckX = null;
+  let gmapCachedTruckY = null;
+
+  function getCachedGmapRoute() {
+    if (!profile.activeJob || !profile.activeJob.targetDepot || !map.findRoute) {
+      gmapCachedRoute = null;
+      gmapCachedTargetId = null;
+      gmapCachedTruckX = null;
+      gmapCachedTruckY = null;
+      return null;
+    }
+    const target = profile.activeJob.targetDepot;
+    const targetId = target.id || `${target.x},${target.y}`;
+    const t = sim.truck;
+    const DIST_RECALC_THRESHOLD = 60; // 60 px ~ 48 m in 1:8 scale
+
+    if (
+      gmapCachedRoute &&
+      gmapCachedTargetId === targetId &&
+      gmapCachedTruckX !== null &&
+      gmapCachedTruckY !== null &&
+      Math.hypot(t.x - gmapCachedTruckX, t.y - gmapCachedTruckY) <= DIST_RECALC_THRESHOLD
+    ) {
+      return gmapCachedRoute;
+    }
+
+    gmapCachedRoute = map.findRoute(t, target);
+    gmapCachedTargetId = targetId;
+    gmapCachedTruckX = t.x;
+    gmapCachedTruckY = t.y;
+    return gmapCachedRoute;
+  }
 
   // Helper for map boundaries from OSM meta.bounds
   function getMapBounds() {
@@ -214,8 +280,14 @@
     if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
-    const cw = canvas.width = Math.floor(rect.width || 900);
-    const ch = canvas.height = Math.floor(rect.height || 520);
+    const targetW = Math.floor(rect.width || 900);
+    const targetH = Math.floor(rect.height || 520);
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
+    }
+    const cw = canvas.width;
+    const ch = canvas.height;
 
     // 1. Land Background
     if (gmapLayer === 'satellite') {
@@ -344,90 +416,81 @@
     const osmEdges = (map.OSM && map.OSM.edges) ? map.OSM.edges : null;
 
     if (osmEdges && osmEdges.length > 0) {
-      // Pass 1: Road Casings
+      const buckets = getGmapTierBuckets(osmEdges);
+      const tierConfig = [
+        { casingColor: '#78350f', casingW: Math.max(4.5, 14.0 * s), coreColor: '#f59e0b', coreW: Math.max(3.2, 10.5 * s) },
+        { casingColor: '#0369a1', casingW: Math.max(4.0, 12.0 * s), coreColor: '#38bdf8', coreW: Math.max(2.8, 9.0 * s) },
+        { casingColor: '#064e3b', casingW: Math.max(2.8, 8.5 * s), coreColor: '#10b981', coreW: Math.max(2.0, 6.0 * s) },
+        { casingColor: '#334155', casingW: Math.max(2.2, 6.5 * s), coreColor: '#94a3b8', coreW: Math.max(1.6, 4.8 * s) },
+        { casingColor: '#1e293b', casingW: Math.max(1.5, 3.2 * s), coreColor: '#334155', coreW: Math.max(1.0, 2.0 * s) }
+      ];
+
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      for (let i = 0; i < osmEdges.length; i++) {
-        const e = osmEdges[i];
-        const eb = e.bounds;
-        if (eb[0] > viewMaxX || eb[2] < viewMinX || eb[1] > viewMaxY || eb[3] < viewMinY) continue;
+      // Pass 1: Road Casings (batched by tier, lowest tier to highest)
+      for (let tIdx = 4; tIdx >= 0; tIdx--) {
+        const bucket = buckets[tIdx];
+        if (!bucket || bucket.length === 0) continue;
+        const cfg = tierConfig[tIdx];
 
-        const rc = e.roadClass;
-        let casingColor = '#18212b';
-        let casingW = 3;
-
-        if (rc === 'motorway' || rc === 'motorway_link') {
-          casingColor = '#78350f';
-          casingW = Math.max(4.5, 14.0 * s);
-        } else if (rc === 'trunk' || rc === 'trunk_link') {
-          casingColor = '#0369a1';
-          casingW = Math.max(4.0, 12.0 * s);
-        } else if (rc === 'primary' || rc === 'primary_link') {
-          casingColor = '#064e3b';
-          casingW = Math.max(2.8, 8.5 * s);
-        } else if (rc === 'secondary' || rc === 'secondary_link') {
-          casingColor = '#334155';
-          casingW = Math.max(2.2, 6.5 * s);
-        } else {
-          // tertiary (thin and dark)
-          casingColor = '#1e293b';
-          casingW = Math.max(1.5, 3.2 * s);
-        }
-
-        ctx.strokeStyle = casingColor;
-        ctx.lineWidth = casingW;
+        ctx.strokeStyle = cfg.casingColor;
+        ctx.lineWidth = cfg.casingW;
         ctx.beginPath();
-        const pts = e.points;
-        for (let p = 0; p < pts.length; p++) {
-          const cx = (cw * 0.5) + (pts[p][0] - centerX) * s + gmapPanX;
-          const cy = (ch * 0.5) + (pts[p][1] - centerY) * s + gmapPanY;
-          if (p === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+        let hasPaths = false;
+
+        for (let i = 0; i < bucket.length; i++) {
+          const e = bucket[i];
+          const eb = e.bounds;
+          if (eb[0] > viewMaxX || eb[2] < viewMinX || eb[1] > viewMaxY || eb[3] < viewMinY) continue;
+
+          const pts = e.points;
+          for (let p = 0; p < pts.length; p++) {
+            const cx = (cw * 0.5) + (pts[p][0] - centerX) * s + gmapPanX;
+            const cy = (ch * 0.5) + (pts[p][1] - centerY) * s + gmapPanY;
+            if (p === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+          }
+          hasPaths = true;
         }
-        ctx.stroke();
+
+        if (hasPaths) {
+          ctx.stroke();
+        }
       }
 
-      // Pass 2: Road Cores (Motorway/trunk thick and bright, primary/secondary medium, tertiary thin and dark)
-      for (let i = 0; i < osmEdges.length; i++) {
-        const e = osmEdges[i];
-        const eb = e.bounds;
-        if (eb[0] > viewMaxX || eb[2] < viewMinX || eb[1] > viewMaxY || eb[3] < viewMinY) continue;
+      // Pass 2: Road Cores (batched by tier, lowest tier to highest)
+      for (let tIdx = 4; tIdx >= 0; tIdx--) {
+        const bucket = buckets[tIdx];
+        if (!bucket || bucket.length === 0) continue;
+        const cfg = tierConfig[tIdx];
 
-        const rc = e.roadClass;
-        if (rc === 'motorway' || rc === 'motorway_link') {
-          ctx.strokeStyle = '#f59e0b'; // Motorway Bright Amber
-          ctx.lineWidth = Math.max(3.2, 10.5 * s);
-        } else if (rc === 'trunk' || rc === 'trunk_link') {
-          ctx.strokeStyle = '#38bdf8'; // Trunk Bright Sky Blue
-          ctx.lineWidth = Math.max(2.8, 9.0 * s);
-        } else if (rc === 'primary' || rc === 'primary_link') {
-          ctx.strokeStyle = '#10b981'; // Primary Emerald Green
-          ctx.lineWidth = Math.max(2.0, 6.0 * s);
-        } else if (rc === 'secondary' || rc === 'secondary_link') {
-          ctx.strokeStyle = '#94a3b8'; // Secondary Medium Slate
-          ctx.lineWidth = Math.max(1.6, 4.8 * s);
-        } else {
-          // Tertiary: тонкие и тёмные
-          ctx.strokeStyle = '#334155'; // Tertiary Dark Slate
-          ctx.lineWidth = Math.max(1.0, 2.0 * s);
-        }
-
+        ctx.strokeStyle = cfg.coreColor;
+        ctx.lineWidth = cfg.coreW;
         ctx.beginPath();
-        const pts = e.points;
-        for (let p = 0; p < pts.length; p++) {
-          const cx = (cw * 0.5) + (pts[p][0] - centerX) * s + gmapPanX;
-          const cy = (ch * 0.5) + (pts[p][1] - centerY) * s + gmapPanY;
-          if (p === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+        let hasPaths = false;
+
+        for (let i = 0; i < bucket.length; i++) {
+          const e = bucket[i];
+          const eb = e.bounds;
+          if (eb[0] > viewMaxX || eb[2] < viewMinX || eb[1] > viewMaxY || eb[3] < viewMinY) continue;
+
+          const pts = e.points;
+          for (let p = 0; p < pts.length; p++) {
+            const cx = (cw * 0.5) + (pts[p][0] - centerX) * s + gmapPanX;
+            const cy = (ch * 0.5) + (pts[p][1] - centerY) * s + gmapPanY;
+            if (p === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+          }
+          hasPaths = true;
         }
-        ctx.stroke();
+
+        if (hasPaths) {
+          ctx.stroke();
+        }
       }
     }
 
-    // 5. Active Dijkstra / A* Navigation Route
-    let currentNavRoute = null;
-    if (profile.activeJob && profile.activeJob.targetDepot && map.findRoute) {
-      currentNavRoute = map.findRoute(sim.truck, profile.activeJob.targetDepot);
-    }
+    // 5. Active Dijkstra / A* Navigation Route (Cached)
+    const currentNavRoute = getCachedGmapRoute();
 
     if (currentNavRoute && currentNavRoute.polyline && currentNavRoute.polyline.length >= 2) {
       const poly = currentNavRoute.polyline;
@@ -547,11 +610,12 @@
       ctx.stroke();
 
       // Draw City Label
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(labelText, cx + dr + 6, cy + 4);
       ctx.fillStyle = '#ffffff';
-      ctx.shadowColor = '#000000';
-      ctx.shadowBlur = 4;
       ctx.fillText(labelText, cx + dr + 6, cy + 4);
-      ctx.shadowBlur = 0;
     }
 
     // B. Priority 2: Road Shields
@@ -646,12 +710,13 @@
         ctx.textAlign = 'left';
 
         if (isCloseZoom) {
-          ctx.fillStyle = '#fca5a5';
           ctx.font = 'bold 10px Roboto, sans-serif';
-          ctx.shadowColor = '#000000';
-          ctx.shadowBlur = 4;
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+          ctx.lineWidth = 2.5;
+          ctx.lineJoin = 'round';
+          ctx.strokeText(depot.name, cx + 11, cy + 3);
+          ctx.fillStyle = '#fca5a5';
           ctx.fillText(depot.name, cx + 11, cy + 3);
-          ctx.shadowBlur = 0;
         }
       }
     }
@@ -684,11 +749,12 @@
         ctx.lineWidth = 1;
         ctx.stroke();
 
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(label, cx + 8, cy + 3);
         ctx.fillStyle = '#6ee7b7';
-        ctx.shadowColor = '#000000';
-        ctx.shadowBlur = 3;
         ctx.fillText(label, cx + 8, cy + 3);
-        ctx.shadowBlur = 0;
       }
     }
 
@@ -1598,15 +1664,19 @@
 
     // Draw Truck Live Position
     const truckPos = projectAdmin(sim.truck.x, sim.truck.y);
-    ctx.fillStyle = '#34A853';
-    ctx.shadowColor = '#34A853';
-    ctx.shadowBlur = 12;
+    ctx.fillStyle = 'rgba(52, 168, 83, 0.35)';
+    ctx.beginPath();
+    ctx.arc(truckPos.cx, truckPos.cy, 10, 0, Math.PI * 2);
+    ctx.fill();
 
+    ctx.fillStyle = '#34A853';
     ctx.beginPath();
     ctx.arc(truckPos.cx, truckPos.cy, 6, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
 
-    ctx.shadowBlur = 0;
     ctx.fillStyle = '#81c995';
     ctx.font = 'bold 9px Consolas, monospace';
     ctx.fillText(`🚚 ${sim.currentSpeedKmh} км/ч`, truckPos.cx + 8, truckPos.cy - 4);

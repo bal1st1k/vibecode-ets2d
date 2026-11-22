@@ -1274,6 +1274,7 @@
       const vMinY = view.minY - 80;
       const vMaxY = view.maxY + 80;
 
+      const tBeforeLoop = performance.now();
       // Layer 1 & 2: Wide semi-transparent green line + narrow bright green line (clipped to view & micro-segments simplified)
       ctx.beginPath();
       let hasLine = false;
