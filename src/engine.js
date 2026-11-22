@@ -433,7 +433,11 @@
       }
 
       // 6. Fuel & Odometer
-      const distTraveledMeters = Math.abs(t.speed * dt) * 0.1;
+      const distTraveledUnits = Math.abs(t.speed * dt);
+      const map = this.map || (typeof ETSMap !== 'undefined' ? ETSMap : null);
+      const distTraveledMeters = (map && typeof map.unitsToRealMeters === 'function')
+        ? map.unitsToRealMeters(distTraveledUnits)
+        : (distTraveledUnits / 1.25);
       t.odometer += distTraveledMeters / 1000;
       // Consumption ~32L/100km loaded, 22L/100km empty
       const lPerKm = (r.attached ? 0.33 : 0.23) + (throttle * 0.15);
