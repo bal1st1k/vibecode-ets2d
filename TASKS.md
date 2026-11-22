@@ -23,5 +23,5 @@
 | T-019 | Удаление мертвого метода _drawTerrain и поля _lastLineDetail в renderer.js | done | b31d808 |
 | T-020 | Удаление недостижимой ветки разметки lanes>=4 в _ensureEdgeCached | done | 5db6e93 |
 | T-021 | Обновление scripts test/start и devDependencies в package.json | done | beec4f1 |
-| T-022 | Удаление screenshots/ в корне и перенаправление measure-fps в assets/screenshots | in_progress | - |
-| T-023 | Обновление AGENTS.md (карта файлов, npm test, запреты, правило MAP_SCALE) | todo | - |
+| T-022 | Удаление screenshots/ в корне и перенаправление measure-fps в assets/screenshots | done | c81a0eb |
+| T-023 | Обновление AGENTS.md (карта файлов, npm test, запреты, правило MAP_SCALE) | in_progress | - |
