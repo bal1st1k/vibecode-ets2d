@@ -196,6 +196,14 @@
       }
     ],
 
+    // 5. Bridges across rivers (1:19 base coordinates, rescaled with RESCALE_S)
+    bridges: [
+      { id: 'bridge-raut-orhei', name: 'Мост через реку Рэут (Орхей, M2)', x: 1200, y: -20000, angle: -Math.PI / 2, length: 180, width: 150 },
+      { id: 'bridge-nistru-m1', name: 'Мост через реку Днестр (Дубоссары, M1)', x: 10500, y: -2700, angle: 0, length: 220, width: 140 },
+      { id: 'bridge-nistru-r2', name: 'Мост через реку Днестр (Бендеры, R2)', x: 14500, y: 5900, angle: 0.35, length: 240, width: 140 },
+      { id: 'bridge-prut-ungheni', name: 'Мост через реку Прут (Унгены, R1)', x: -30800, y: 2400, angle: 3.14, length: 200, width: 135 }
+    ],
+
     // Dynamic POIs (Populated strictly from data/moldova-map.json)
     pois: []
   };
@@ -240,6 +248,7 @@
     GEOGRAPHY.prutRiver = GEOGRAPHY.prutRiver.map(rescaleCoord);
     GEOGRAPHY.rautRiver = GEOGRAPHY.rautRiver.map(rescaleCoord);
     GEOGRAPHY.bicRiver = GEOGRAPHY.bicRiver.map(rescaleCoord);
+    GEOGRAPHY.bridges = GEOGRAPHY.bridges.map(rescaleCoord);
     for (const f of GEOGRAPHY.forests) {
       f.points = f.points.map(rescaleCoord);
     }
@@ -828,6 +837,8 @@
     ROAD_SIGNS,
     CITY_BLOCKS,
     GEOGRAPHY,
+    bridges: GEOGRAPHY.bridges,
+    BRIDGES: GEOGRAPHY.bridges,
     CARGO_CATALOG,
     getAllDepots: () => DEPOTS,
     getAllFuels: () => FUELS,
