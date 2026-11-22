@@ -23,21 +23,12 @@ const INDEX_PATH = path.join(DATA_DIR, 'env-index.json');
 
 const PBF_URL = 'https://download.geofabrik.de/europe/moldova-latest.osm.pbf';
 
-// ==============================================================
-// 1. PROJECTION & CONSTANTS (Reused from build-map.mjs)
-// ==============================================================
-export const ORIGIN_LON = 28.8353;
-export const ORIGIN_LAT = 47.0105;
-export const LAT0_RAD = (ORIGIN_LAT * Math.PI) / 180;
-export const R = 6371000; // Earth radius in meters
-export const MAP_SCALE = 1.25; // 1:8 scale (1 real meter = 1.25 px/units)
-export const CHUNK_SIZE = 8192; // World units per chunk axis
+import { project, MAP_SCALE } from './build-map.mjs';
 
-export function project(lon, lat, scale = MAP_SCALE) {
-  const x = 1200 + (lon - ORIGIN_LON) * (Math.PI / 180) * R * Math.cos(LAT0_RAD) * scale;
-  const y = 3000 - (lat - ORIGIN_LAT) * (Math.PI / 180) * R * scale;
-  return [Math.round(x), Math.round(y)];
-}
+// ==============================================================
+// 1. CONSTANTS
+// ==============================================================
+export const CHUNK_SIZE = 8192; // World units per chunk axis
 
 // ==============================================================
 // 2. ENVIRONMENT TYPES & CLASSIFICATIONS
@@ -412,9 +403,9 @@ async function buildEnv() {
         if (item.type === 'node') {
           const idx = nodeIndexMap.get(item.id);
           if (idx !== undefined) {
-            const [x, y] = project(item.lon, item.lat);
-            coordsX[idx] = x;
-            coordsY[idx] = y;
+            const [px, py] = project(item.lon, item.lat, MAP_SCALE);
+            coordsX[idx] = Math.round(px);
+            coordsY[idx] = Math.round(py);
           }
         } else {
           cleanup();
@@ -610,6 +601,9 @@ async function buildEnv() {
   // 8. WRITE CHUNKS & INDEX
   // -------------------------------------------------------------
   console.log('\n[Export] Writing chunk files to data/env-tiles/...');
+  if (fs.existsSync(TILES_DIR)) {
+    fs.rmSync(TILES_DIR, { recursive: true, force: true });
+  }
   fs.mkdirSync(TILES_DIR, { recursive: true });
 
   const chunkKeys = [];
