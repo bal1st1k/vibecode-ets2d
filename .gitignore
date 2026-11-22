@@ -9,3 +9,4 @@ node_modules/
 *.pbf
 data/*.osm.pbf
 data/moldova-map.js
+data/env-tiles/

@@ -7,7 +7,8 @@
   },
   "scripts": {
     "start": "node server.cjs",
-    "test": "node tests/test-ets2.cjs && node tests/test-full-lifecycle.cjs && node tests/test-osm-routes.cjs && node tests/test-job-market.cjs"
+    "test": "node tests/test-ets2.cjs && node tests/test-full-lifecycle.cjs && node tests/test-osm-routes.cjs && node tests/test-job-market.cjs",
+    "build:env": "node tools/build-env.mjs"
   },
   "repository": {
     "type": "git",
