@@ -134,15 +134,23 @@ class EnvChunk extends Node2D:
 	var land_detail_mi: MeshInstance2D = null
 	var water_mi: MeshInstance2D = null
 	var rail_mi: MeshInstance2D = null
-	var bld_mi: MeshInstance2D = null
+	var bld_major_mi: MeshInstance2D = null
+	var bld_minor_mi: MeshInstance2D = null
 
 	func update_lod(zoom: float) -> void:
-		# LOD: When zoom < 0.6x, hide buildings and fine land details to prevent clutter and maintain high FPS
-		var show_details: bool = zoom >= 0.6
-		if bld_mi and bld_mi.visible != show_details:
-			bld_mi.visible = show_details
-		if land_detail_mi and land_detail_mi.visible != show_details:
-			land_detail_mi.visible = show_details
+		# Detail land polygons (small garden plots) hidden when zoom < 0.6x
+		var show_land_details: bool = zoom >= 0.6
+		if land_detail_mi and land_detail_mi.visible != show_land_details:
+			land_detail_mi.visible = show_land_details
+
+		# Major buildings (>= BUILDING_MIN_AREA_FAR_M2, e.g. 40 m²) are ALWAYS visible across full auto-zoom range
+		if bld_major_mi and not bld_major_mi.visible:
+			bld_major_mi.visible = true
+
+		# Minor buildings (< BUILDING_MIN_AREA_FAR_M2) shown only at close zoom (>= BUILDING_LOD_ZOOM_THRESHOLD)
+		var show_minor_blds: bool = zoom >= Config.BUILDING_LOD_ZOOM_THRESHOLD
+		if bld_minor_mi and bld_minor_mi.visible != show_minor_blds:
+			bld_minor_mi.visible = show_minor_blds
 
 # -------------------------------------------------------------
 # EnvWorld Lifecycle & Streaming
@@ -292,7 +300,7 @@ func _process_staged_layers(t0: int) -> void:
 	var cam = get_viewport().get_camera_2d()
 	var cur_zoom: float = cam.zoom.x if cam else 1.0
 
-	while _staged_layer < 5:
+	while _staged_layer < 6:
 		if _staged_layer == 0:
 			var m = _staged_data.get("land_base_mesh", null)
 			if m:
@@ -326,23 +334,31 @@ func _process_staged_layers(t0: int) -> void:
 				_staged_node.add_child(mi)
 				_staged_node.rail_mi = mi
 		elif _staged_layer == 4:
-			var m = _staged_data.get("buildings_mesh", null)
+			var m = _staged_data.get("buildings_major_mesh", null)
 			if m:
 				var mi = MeshInstance2D.new()
-				mi.name = "Buildings"
+				mi.name = "BuildingsMajor"
 				mi.mesh = m
 				_staged_node.add_child(mi)
-				_staged_node.bld_mi = mi
+				_staged_node.bld_major_mi = mi
+		elif _staged_layer == 5:
+			var m = _staged_data.get("buildings_minor_mesh", null)
+			if m:
+				var mi = MeshInstance2D.new()
+				mi.name = "BuildingsMinor"
+				mi.mesh = m
+				_staged_node.add_child(mi)
+				_staged_node.bld_minor_mi = mi
 
 		_staged_layer += 1
 
 		# Time slice budget: if frame time exceeds 8 ms (8000 us), defer remaining layers to next frame
 		var elapsed_us = Time.get_ticks_usec() - t0
-		if elapsed_us > 8000 and _staged_layer < 5:
+		if elapsed_us > 8000 and _staged_layer < 6:
 			last_chunk_build_ms = float(elapsed_us) / 1000.0
 			return
 
-	# All 5 layers completed
+	# All 6 layers completed
 	_staged_node.update_lod(cur_zoom)
 	active_chunks[_staged_key] = _staged_node
 	last_chunk_build_ms = float(Time.get_ticks_usec() - t0) / 1000.0
@@ -549,8 +565,9 @@ func _worker_load_chunk(key: String, file_path: String) -> void:
 
 	result["rail_mesh"] = rail_builder.build_mesh()
 
-	# 4. Buildings Mesh (light rooftop fills + thin dark contours)
-	var bld_builder = MeshBuilder.new()
+	# 4. Buildings Meshes (major buildings always visible, minor buildings subject to zoom LOD)
+	var bld_major_builder = MeshBuilder.new()
+	var bld_minor_builder = MeshBuilder.new()
 	var raw_bld = data.get("buildings", [])
 
 	for b in raw_bld:
@@ -561,8 +578,11 @@ func _worker_load_chunk(key: String, file_path: String) -> void:
 		var bw: float = float(b[2])
 		var bh: float = float(b[3])
 
-		# Skip tiny micro-buildings (< 180 area or min dim < 6)
-		if bw * bh < 180.0 or bw < 6.0 or bh < 6.0:
+		var area_units: float = bw * bh
+		var area_m2: float = area_units / (Config.MAP_SCALE * Config.MAP_SCALE)
+
+		# Skip degenerate micro-polygons (< BUILDING_MIN_AREA_CLOSE_M2 or width/height < 2.5m)
+		if area_m2 < Config.BUILDING_MIN_AREA_CLOSE_M2 or bw < 3.0 or bh < 3.0:
 			continue
 
 		var angle: float = float(b[4])
@@ -576,16 +596,19 @@ func _worker_load_chunk(key: String, file_path: String) -> void:
 		var p3 = Vector2(bcx + hw * cos_a - hh * sin_a, bcy + hw * sin_a + hh * cos_a)
 		var p4 = Vector2(bcx - hw * cos_a - hh * sin_a, bcy - hw * sin_a + hh * cos_a)
 
+		var builder = bld_major_builder if area_m2 >= Config.BUILDING_MIN_AREA_FAR_M2 else bld_minor_builder
+
 		# Crisp light rooftop
-		bld_builder.add_quad(p1, p2, p3, p4, BLD_FILL_COLOR)
+		builder.add_quad(p1, p2, p3, p4, BLD_FILL_COLOR)
 
 		# Sharp thin 0.8-unit outline
-		bld_builder.add_thick_segment(p1, p2, 0.4, BLD_OUTLINE_COLOR)
-		bld_builder.add_thick_segment(p2, p3, 0.4, BLD_OUTLINE_COLOR)
-		bld_builder.add_thick_segment(p3, p4, 0.4, BLD_OUTLINE_COLOR)
-		bld_builder.add_thick_segment(p4, p1, 0.4, BLD_OUTLINE_COLOR)
+		builder.add_thick_segment(p1, p2, 0.4, BLD_OUTLINE_COLOR)
+		builder.add_thick_segment(p2, p3, 0.4, BLD_OUTLINE_COLOR)
+		builder.add_thick_segment(p3, p4, 0.4, BLD_OUTLINE_COLOR)
+		builder.add_thick_segment(p4, p1, 0.4, BLD_OUTLINE_COLOR)
 
-	result["buildings_mesh"] = bld_builder.build_mesh()
+	result["buildings_major_mesh"] = bld_major_builder.build_mesh()
+	result["buildings_minor_mesh"] = bld_minor_builder.build_mesh()
 
 	_store_worker_result(key, result)
 

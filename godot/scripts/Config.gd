@@ -8,6 +8,14 @@ const MAP_SCALE: float = 1.25
 # Multiplies world speed (units/s) so vehicle traverses compressed map at realistic game-time speed
 var DISTANCE_COMPRESSION: float = 8.0
 
+# Building LOD area thresholds (in real square meters m²)
+# Used by EnvWorld for soft area-based LOD across camera zoom range:
+# At close zoom (>= BUILDING_LOD_ZOOM_THRESHOLD, e.g. >= 0.65x): show all buildings down to min area (~15 m²)
+# At far zoom (< BUILDING_LOD_ZOOM_THRESHOLD, e.g. < 0.65x, 90 km/h): show only buildings >= threshold (~40 m²)
+const BUILDING_MIN_AREA_CLOSE_M2: float = 15.0 # Min building area shown when zoom >= 0.65x (all buildings)
+const BUILDING_MIN_AREA_FAR_M2: float = 40.0   # Min building area shown when zoom < 0.65x (highway speed ~0.50-0.55x)
+const BUILDING_LOD_ZOOM_THRESHOLD: float = 0.65 # Camera zoom threshold between close and far LOD
+
 # Touch controls (auto-enabled on touchscreen devices, or toggled on desktop via F4 or env TOUCH_CONTROLS)
 var touch_controls_enabled: bool = false
 
@@ -39,3 +47,8 @@ func world_speed_to_kmh(world_speed: float) -> float:
 
 func kmh_to_world_speed(kmh: float) -> float:
 	return (kmh / 3.6) * MAP_SCALE * DISTANCE_COMPRESSION
+
+func get_building_min_area_m2(zoom: float) -> float:
+	if zoom >= BUILDING_LOD_ZOOM_THRESHOLD:
+		return BUILDING_MIN_AREA_CLOSE_M2
+	return BUILDING_MIN_AREA_FAR_M2
