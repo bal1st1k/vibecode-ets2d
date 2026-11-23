@@ -10,10 +10,10 @@ var DISTANCE_COMPRESSION: float = 8.0
 
 # Conversion helpers
 func get_world_scale() -> float:
-	return MAP_SCALE * DISTANCE_COMPRESSION # 1.25 * 8.0 = 10.0 world units per real meter
+	return MAP_SCALE
 
 func real_meters_to_world(m: float) -> float:
-	return m * MAP_SCALE * DISTANCE_COMPRESSION
+	return m * MAP_SCALE
 
 func world_to_real_meters(units: float) -> float:
 	return units / MAP_SCALE

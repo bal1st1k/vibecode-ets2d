@@ -7,7 +7,7 @@
 [ext_resource type="Script" path="res://scripts/Trailer.gd" id="5_trailer"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_truck"]
-size = Vector2(80, 32)
+size = Vector2(68, 25)
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -20,7 +20,7 @@ script = ExtResource("4_env")
 script = ExtResource("2_road")
 
 [node name="Trailer" type="Node2D" parent="."]
-position = Vector2(1200, 3030.5)
+position = Vector2(1200, 3008.5)
 rotation = -1.5708
 script = ExtResource("5_trailer")
 
@@ -33,7 +33,7 @@ script = ExtResource("3_truck")
 shape = SubResource("RectangleShape2D_truck")
 
 [node name="Camera2D" type="Camera2D" parent="Truck"]
-zoom = Vector2(0.48, 0.48)
+zoom = Vector2(0.75, 0.75)
 position_smoothing_enabled = true
 position_smoothing_speed = 8.0
 

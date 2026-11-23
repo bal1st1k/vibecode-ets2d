@@ -1,23 +1,25 @@
 extends CharacterBody2D
 
 # 2D Top-Down Truck Physics (Realistic European Semi-Truck with ETS2 1:8 Distance Compression)
-# All physical dimensions are defined in real meters, then scaled to world units via Config.get_world_scale()
-const REAL_WHEELBASE: float = 4.4        # meters between front steer and rear drive axle
-const REAL_HITCH_OFFSET: float = -2.6    # meters behind truck center to fifth wheel
-const REAL_KINGPIN_TO_AXLE: float = 10.5 # meters from kingpin to trailer bogie center
-const JACKKNIFE_LIMIT: float = 1.50      # ~86 degrees max articulation limit
+# Physical dimensions in world units (matching src/engine.js, without DISTANCE_COMPRESSION scaling):
+# ~6.8 m truck length, ~2.5 m width, ~4.0 m wheelbase, ~8.5 m kingpin-to-bogie
+const CAB_LENGTH: float = 68.0
+const CAB_WIDTH: float = 25.0
+const WHEELBASE: float = 40.0        # meters between front steer and rear drive axle in world units
+const HITCH_OFFSET: float = -16.0    # fifth wheel position behind truck center
+const KINGPIN_TO_AXLE: float = 85.0  # distance from kingpin to trailer rear bogie center
+const JACKKNIFE_LIMIT: float = 1.35  # ~77 degrees max articulation limit
 
-# World units scaled by MAP_SCALE (1.25) * DISTANCE_COMPRESSION (8) = 10.0 units/m
-var wheelbase: float = REAL_WHEELBASE * Config.get_world_scale()       # 44.0
-var hitch_offset: float = REAL_HITCH_OFFSET * Config.get_world_scale() # -26.0
-var kingpin_to_axle: float = REAL_KINGPIN_TO_AXLE * Config.get_world_scale() # 105.0
+var wheelbase: float = WHEELBASE
+var hitch_offset: float = HITCH_OFFSET
+var kingpin_to_axle: float = KINGPIN_TO_AXLE
 
-# Speeds in world units/sec (90 km/h in world = 250 units/s at 10 units/m)
+# Speeds in world units/sec (90 km/h in world = 250 units/s with 1:8 compression)
 @export var max_forward_speed: float = Config.kmh_to_world_speed(90.0) # 250.0 units/s
 @export var max_reverse_speed: float = Config.kmh_to_world_speed(20.0) # 55.55 units/s
 @export var acceleration: float = (Config.kmh_to_world_speed(90.0) / 5.5) # ~45.45 units/s² (0-90 km/h in 5.5s)
 @export var braking: float = (Config.kmh_to_world_speed(90.0) / 2.2) # ~113.6 units/s² (90-0 km/h in 2.2s)
-@export var friction: float = 1.2 * Config.get_world_scale() # ~12.0 units/s² rolling drag
+@export var friction: float = 1.2 * Config.MAP_SCALE * Config.DISTANCE_COMPRESSION # ~12.0 units/s² rolling drag
 @export var steer_speed: float = 5.0 # rad/s max steering wheel turn rate
 
 var current_speed: float = 0.0         # Scalar speed along facing direction in world units/s
@@ -32,10 +34,10 @@ var odometer_km: float = 0.0           # Real km traveled
 var fuel_litres: float = 580.0         # Fuel remaining (max 600L)
 const FUEL_CAPACITY: float = 600.0
 
-# Camera zoom & dynamic speed scaling
-var base_zoom: float = 0.42            # Default wide panoramic highway zoom
+# Camera zoom: at 0 km/h: ~0.75x (> 0.6x, full LOD with buildings); at 90 km/h: ~0.50x (< 0.6x, simplified overview)
+var base_zoom: float = 0.65
 var manual_zoom_factor: float = 1.0    # Scaled by mouse wheel
-var min_zoom: float = 0.15             # Furthest zoom out
+var min_zoom: float = 0.12             # Furthest zoom out
 var max_zoom: float = 2.00             # Closest zoom in
 
 @export var trailer_path: NodePath = NodePath("../Trailer")
@@ -65,6 +67,7 @@ func _ready() -> void:
 	if OS.has_environment("TEST_SPEED"):
 		var spd = float(OS.get_environment("TEST_SPEED"))
 		current_speed = Config.kmh_to_world_speed(spd)
+		test_mode = "speed"
 
 	for arg in OS.get_cmdline_args():
 		if arg == "--turn-test":
@@ -116,6 +119,10 @@ func _physics_process(delta: float) -> void:
 			current_speed = -Config.kmh_to_world_speed(15.0)
 		throttle = -0.85
 		steer_input = -0.80
+	elif test_mode == "speed":
+		var spd = float(OS.get_environment("TEST_SPEED")) if OS.has_environment("TEST_SPEED") else 90.0
+		current_speed = Config.kmh_to_world_speed(spd)
+		throttle = 0.5
 	else:
 		if Input.is_action_pressed("accelerate") or Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
 			throttle += 1.0
@@ -207,8 +214,8 @@ func _physics_process(delta: float) -> void:
 	# 8. Dynamic Camera Auto-Zoom based on speed + manual wheel adjustment
 	if camera:
 		var speed_ratio = clamp(abs(current_speed) / max_forward_speed, 0.0, 1.0)
-		# At 0 km/h: ~1.15x base zoom (closer detail); At 90 km/h: ~0.80x base zoom (wide highway overview)
-		var target_zoom_val = clamp(base_zoom * manual_zoom_factor * (1.15 - 0.35 * speed_ratio), min_zoom, max_zoom)
+		# At 0 km/h: ~0.75x base zoom (closer detail, buildings visible); At 90 km/h: ~0.50x base zoom (LOD switches off buildings)
+		var target_zoom_val = clamp(base_zoom * manual_zoom_factor * (1.15 - 0.38 * speed_ratio), min_zoom, max_zoom)
 		var cur_z = camera.zoom.x
 		var new_z = lerp(cur_z, target_zoom_val, clamp(delta * 2.8, 0.0, 1.0))
 		camera.zoom = Vector2(new_z, new_z)
@@ -225,49 +232,49 @@ func _unhandled_input(event: InputEvent) -> void:
 			manual_zoom_factor = clamp(manual_zoom_factor * 0.88, 0.35, 3.0)
 
 func _draw() -> void:
-	# Semi-truck cab top-down dimensions: length 80 px, width 32 px
-	var cab_length: float = 80.0
-	var cab_width: float = 32.0
-	var half_l = cab_length * 0.5
-	var half_w = cab_width * 0.5
+	# Semi-truck cab top-down dimensions: length 68.0, width 25.0 (~6.8m x 2.5m, matching src/engine.js)
+	var cab_length: float = CAB_LENGTH
+	var cab_width: float = CAB_WIDTH
+	var half_l = cab_length * 0.5 # 34.0
+	var half_w = cab_width * 0.5  # 12.5
 
 	# 1. Drop shadow
-	draw_rect(Rect2(-half_l + 3.0, -half_w + 3.0, cab_length, cab_width), Color(0.0, 0.0, 0.0, 0.35))
+	draw_rect(Rect2(-half_l + 2.5, -half_w + 2.5, cab_length, cab_width), Color(0.0, 0.0, 0.0, 0.35))
 
 	# 2. Chassis frame & fuel tanks
-	draw_rect(Rect2(-half_l, -half_w + 4.0, cab_length * 0.45, cab_width - 8.0), Color(0.12, 0.12, 0.14, 1.0))
-	# Fuel tanks / exhaust boxes
-	draw_rect(Rect2(-half_l + 12.0, -half_w - 1.0, 22.0, 3.0), Color(0.65, 0.65, 0.70, 1.0))
-	draw_rect(Rect2(-half_l + 12.0, half_w - 2.0, 22.0, 3.0), Color(0.65, 0.65, 0.70, 1.0))
+	draw_rect(Rect2(-half_l, -half_w + 3.0, cab_length * 0.45, cab_width - 6.0), Color(0.12, 0.12, 0.14, 1.0))
+	# Fuel tanks / exhaust boxes (aluminum)
+	draw_rect(Rect2(-half_l + 10.0, -half_w - 1.0, 18.0, 2.5), Color(0.65, 0.65, 0.70, 1.0))
+	draw_rect(Rect2(-half_l + 10.0, half_w - 1.5, 18.0, 2.5), Color(0.65, 0.65, 0.70, 1.0))
 
-	# 3. Wheels
-	var wheel_w = 18.0
-	var wheel_h = 7.0
+	# 3. Wheels (Steer axle at +20.0, Drive axle at -20.0, wheelbase = 40.0)
+	var wheel_w = 14.0
+	var wheel_h = 5.0
 	# Front steer wheels
-	draw_rect(Rect2(half_l - 28.0, -half_w - 2.0, wheel_w, wheel_h), Color(0.08, 0.08, 0.08, 1.0))
-	draw_rect(Rect2(half_l - 28.0, half_w - 5.0, wheel_w, wheel_h), Color(0.08, 0.08, 0.08, 1.0))
+	draw_rect(Rect2(20.0 - wheel_w * 0.5, -half_w - 1.5, wheel_w, wheel_h), Color(0.08, 0.08, 0.09, 1.0))
+	draw_rect(Rect2(20.0 - wheel_w * 0.5, half_w - 3.5, wheel_w, wheel_h), Color(0.08, 0.08, 0.09, 1.0))
 	# Rear dual drive wheels
-	draw_rect(Rect2(-half_l + 8.0, -half_w - 2.0, wheel_w, wheel_h), Color(0.08, 0.08, 0.08, 1.0))
-	draw_rect(Rect2(-half_l + 8.0, half_w - 5.0, wheel_w, wheel_h), Color(0.08, 0.08, 0.08, 1.0))
+	draw_rect(Rect2(-20.0 - wheel_w * 0.5, -half_w - 1.5, wheel_w, wheel_h), Color(0.08, 0.08, 0.09, 1.0))
+	draw_rect(Rect2(-20.0 - wheel_w * 0.5, half_w - 3.5, wheel_w, wheel_h), Color(0.08, 0.08, 0.09, 1.0))
 
-	# 4. Fifth wheel coupling plate (skid plate at hitch_offset)
-	draw_circle(Vector2(hitch_offset, 0.0), 6.5, Color(0.20, 0.22, 0.25, 1.0))
-	draw_circle(Vector2(hitch_offset, 0.0), 3.0, Color(0.08, 0.08, 0.10, 1.0))
+	# 4. Fifth wheel coupling plate (skid plate at hitch_offset = -16.0)
+	draw_circle(Vector2(hitch_offset, 0.0), 5.5, Color(0.20, 0.22, 0.25, 1.0))
+	draw_circle(Vector2(hitch_offset, 0.0), 2.5, Color(0.08, 0.08, 0.10, 1.0))
 
 	# 5. Main cabin body
-	var cab_rect = Rect2(-half_l + 30.0, -half_w + 1.0, cab_length - 30.0, cab_width - 2.0)
-	draw_rect(cab_rect, Color(0.0, 0.75, 0.9, 1.0)) # Vibrant cyan cab
+	var cab_rect = Rect2(-half_l + 24.0, -half_w + 1.0, cab_length - 24.0, cab_width - 2.0)
+	draw_rect(cab_rect, Color(0.0, 0.75, 0.90, 1.0)) # Vibrant cyan cab
 
-	# 6. Windshield
-	var wind_rect = Rect2(half_l - 20.0, -half_w + 4.0, 8.0, cab_width - 8.0)
+	# 6. Windshield & Side Windows
+	var wind_rect = Rect2(half_l - 15.0, -half_w + 3.0, 6.0, cab_width - 6.0)
 	draw_rect(wind_rect, Color(0.15, 0.25, 0.35, 1.0))
 
-	# 7. Roof aerodynamic deflector & mirrors
-	draw_rect(Rect2(-half_l + 35.0, -half_w + 5.0, 28.0, cab_width - 10.0), Color(0.0, 0.65, 0.8, 1.0))
+	# 7. Roof aerodynamic deflector & side mirrors
+	draw_rect(Rect2(-half_l + 28.0, -half_w + 4.0, 22.0, cab_width - 8.0), Color(0.0, 0.65, 0.80, 1.0))
 	# Side mirrors
-	draw_rect(Rect2(half_l - 16.0, -half_w - 5.0, 4.0, 4.0), Color(0.0, 0.70, 0.85, 1.0))
-	draw_rect(Rect2(half_l - 16.0, half_w + 1.0, 4.0, 4.0), Color(0.0, 0.70, 0.85, 1.0))
+	draw_rect(Rect2(half_l - 12.0, -half_w - 4.0, 3.5, 3.5), Color(0.0, 0.70, 0.85, 1.0))
+	draw_rect(Rect2(half_l - 12.0, half_w + 0.5, 3.5, 3.5), Color(0.0, 0.70, 0.85, 1.0))
 
 	# 8. Headlights
-	draw_rect(Rect2(half_l - 2.0, -half_w + 2.0, 2.0, 6.0), Color(1.0, 0.95, 0.6, 1.0))
-	draw_rect(Rect2(half_l - 2.0, half_w - 8.0, 2.0, 6.0), Color(1.0, 0.95, 0.6, 1.0))
+	draw_rect(Rect2(half_l - 1.5, -half_w + 2.0, 1.5, 4.5), Color(1.0, 0.95, 0.60, 1.0))
+	draw_rect(Rect2(half_l - 1.5, half_w - 6.5, 1.5, 4.5), Color(1.0, 0.95, 0.60, 1.0))
