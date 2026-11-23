@@ -37,7 +37,12 @@ func _ready() -> void:
 			var sx = float(parts[0].strip_edges())
 			var sy = float(parts[1].strip_edges())
 			truck.position = Vector2(sx, sy)
+			if truck.has_method("reset_trailer_alignment"):
+				truck.reset_trailer_alignment()
 			print("[Main] Custom truck spawn position set to: (%.1f, %.1f)" % [sx, sy])
+
+	if OS.has_environment("SCREENSHOT_FRAMES"):
+		screenshot_frames = int(OS.get_environment("SCREENSHOT_FRAMES"))
 
 	if OS.has_environment("SCREENSHOT"):
 		should_screenshot = true
@@ -46,7 +51,9 @@ func _ready() -> void:
 			screenshot_target = env_val
 
 	for arg in OS.get_cmdline_args():
-		if arg.begins_with("--screenshot="):
+		if arg.begins_with("--frames="):
+			screenshot_frames = int(arg.substr("--frames=".length()))
+		elif arg.begins_with("--screenshot="):
 			should_screenshot = true
 			screenshot_target = arg.substr("--screenshot=".length())
 		elif arg == "--screenshot":
@@ -78,8 +85,16 @@ func _process(delta: float) -> void:
 	if debug_label:
 		var pos = truck.global_position if truck else Vector2.ZERO
 		var speed_kmh = 0.0
-		if truck and "current_speed" in truck:
-			speed_kmh = (abs(truck.current_speed) / Config.MAP_SCALE) * 3.6
+		var park_status = ""
+		var artic_deg = 0.0
+		if truck:
+			if "current_speed" in truck:
+				speed_kmh = (abs(truck.current_speed) / Config.MAP_SCALE) * 3.6
+			if "parking_brake" in truck and truck.parking_brake:
+				park_status = " [P]"
+			if "articulation_angle" in truck:
+				artic_deg = rad_to_deg(truck.articulation_angle)
+
 		var cx = int(floor(pos.x / 2048.0))
 		var cy = int(floor(pos.y / 2048.0))
 		var ecx = int(floor(pos.x / 8192.0))
@@ -87,15 +102,15 @@ func _process(delta: float) -> void:
 		var build_ms = env_world.last_chunk_build_ms if env_world else 0.0
 
 		if show_f3_perf:
-			debug_label.text = "FPS: %d | Draw Calls: %d | Objects: %d\nPos: (%.1f, %.1f) | Speed: %.1f km/h\nRoad Chunk: %d_%d | Env Chunk: %d_%d\nChunk Build: %.1f ms | F3: Toggle Stats" % [
+			debug_label.text = "FPS: %d | Draw Calls: %d | Objects: %d\nPos: (%.1f, %.1f) | Speed: %.1f km/h%s | Artic: %.1f°\nRoad Chunk: %d_%d | Env Chunk: %d_%d\nChunk Build: %.1f ms | F3: Toggle Stats | Space: Handbrake" % [
 				current_fps, draw_calls, objects_count,
-				pos.x, pos.y, speed_kmh,
+				pos.x, pos.y, speed_kmh, park_status, artic_deg,
 				cx, cy, ecx, ecy,
 				build_ms
 			]
 		else:
-			debug_label.text = "FPS: %d | Speed: %.1f km/h | Pos: (%.1f, %.1f) | F3: Stats" % [
-				current_fps, speed_kmh, pos.x, pos.y
+			debug_label.text = "FPS: %d | Speed: %.1f km/h%s | Artic: %.1f° | Pos: (%.1f, %.1f) | F3: Stats" % [
+				current_fps, speed_kmh, park_status, artic_deg, pos.x, pos.y
 			]
 
 	if should_screenshot and not screenshot_taken and frame_counter >= screenshot_frames:

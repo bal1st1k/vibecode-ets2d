@@ -1,9 +1,10 @@
-[gd_scene load_steps=6 format=3 uid="uid://c7k0y4w2xv1"]
+[gd_scene load_steps=7 format=3 uid="uid://c7k0y4w2xv1"]
 
 [ext_resource type="Script" path="res://scripts/Main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/RoadWorld.gd" id="2_road"]
 [ext_resource type="Script" path="res://scripts/Truck.gd" id="3_truck"]
 [ext_resource type="Script" path="res://scripts/EnvWorld.gd" id="4_env"]
+[ext_resource type="Script" path="res://scripts/Trailer.gd" id="5_trailer"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_truck"]
 size = Vector2(80, 32)
@@ -17,6 +18,11 @@ script = ExtResource("4_env")
 
 [node name="RoadWorld" type="Node2D" parent="."]
 script = ExtResource("2_road")
+
+[node name="Trailer" type="Node2D" parent="."]
+position = Vector2(1200, 3030.5)
+rotation = -1.5708
+script = ExtResource("5_trailer")
 
 [node name="Truck" type="CharacterBody2D" parent="."]
 position = Vector2(1200, 2950)
@@ -36,8 +42,8 @@ position_smoothing_speed = 8.0
 [node name="DebugLabel" type="Label" parent="CanvasLayer"]
 offset_left = 16.0
 offset_top = 16.0
-offset_right = 420.0
-offset_bottom = 140.0
+offset_right = 440.0
+offset_bottom = 150.0
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
