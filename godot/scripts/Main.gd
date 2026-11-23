@@ -11,6 +11,8 @@ var should_screenshot: bool = false
 var screenshot_target: String = "assets/screenshots/godot-chisinau.png"
 var screenshot_frames: int = 120 # wait frames for chunks to stream and steady-state FPS
 var fps_samples: Array = []
+var draw_call_samples: Array = []
+var show_f3_perf: bool = true
 
 func _ready() -> void:
 	if env_world and truck:
@@ -57,22 +59,44 @@ func _ready() -> void:
 		elif arg == "--screenshot":
 			should_screenshot = true
 
-func _process(_delta: float) -> void:
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F3:
+			show_f3_perf = not show_f3_perf
+
+func _process(delta: float) -> void:
 	frame_counter += 1
-	var current_fps = Engine.get_frames_per_second()
-	if frame_counter > 40:
+	var current_fps = int(round(1.0 / max(0.0001, delta)))
+	var draw_calls = Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+	var objects_count = Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
+
+	# Sample steady state after first 30 setup frames
+	if frame_counter > 30:
 		fps_samples.append(current_fps)
+		draw_call_samples.append(draw_calls)
 
 	if debug_label:
 		var pos = truck.global_position if truck else Vector2.ZERO
 		var speed_kmh = 0.0
 		if truck and "current_speed" in truck:
-			speed_kmh = abs(truck.current_speed / 1.25) * 3.6
+			speed_kmh = (abs(truck.current_speed) / Config.MAP_SCALE) * 3.6
 		var cx = int(floor(pos.x / 2048.0))
 		var cy = int(floor(pos.y / 2048.0))
 		var ecx = int(floor(pos.x / 8192.0))
 		var ecy = int(floor(pos.y / 8192.0))
-		debug_label.text = "FPS: %d\nPos: (%.1f, %.1f)\nRoad Chunk: %d_%d\nEnv Chunk: %d_%d\nSpeed: %.1f km/h\nControls: WASD / Arrows | Wheel Zoom" % [current_fps, pos.x, pos.y, cx, cy, ecx, ecy, speed_kmh]
+		var build_ms = env_world.last_chunk_build_ms if env_world else 0.0
+
+		if show_f3_perf:
+			debug_label.text = "FPS: %d | Draw Calls: %d | Objects: %d\nPos: (%.1f, %.1f) | Speed: %.1f km/h\nRoad Chunk: %d_%d | Env Chunk: %d_%d\nChunk Build: %.1f ms | F3: Toggle Stats" % [
+				current_fps, draw_calls, objects_count,
+				pos.x, pos.y, speed_kmh,
+				cx, cy, ecx, ecy,
+				build_ms
+			]
+		else:
+			debug_label.text = "FPS: %d | Speed: %.1f km/h | Pos: (%.1f, %.1f) | F3: Stats" % [
+				current_fps, speed_kmh, pos.x, pos.y
+			]
 
 	if should_screenshot and not screenshot_taken and frame_counter >= screenshot_frames:
 		screenshot_taken = true
@@ -85,7 +109,15 @@ func _process(_delta: float) -> void:
 				if f < min_fps: min_fps = f
 				if f > max_fps: max_fps = f
 			var avg_fps = sum_fps / fps_samples.size()
-			print("[Main] Measured FPS over %d frames: %.1f (min: %d, max: %d)" % [fps_samples.size(), avg_fps, min_fps, max_fps])
+
+			var sum_dc = 0.0
+			for dc in draw_call_samples:
+				sum_dc += dc
+			var avg_dc = sum_dc / max(1, draw_call_samples.size())
+
+			print("[Main] Measured over %d frames: FPS %.1f (min: %d, max: %d) | Draw Calls: %.0f | Chunk Build: %.1f ms" % [
+				fps_samples.size(), avg_fps, min_fps, max_fps, avg_dc, env_world.last_chunk_build_ms if env_world else 0.0
+			])
 		take_screenshot(screenshot_target)
 
 func take_screenshot(target_path: String) -> void:

@@ -1,14 +1,15 @@
 extends CharacterBody2D
 
-# 2D Top-Down Truck Physics
-@export var max_forward_speed: float = 750.0 # ~90 km/h in world units (1.25 px/m)
-@export var max_reverse_speed: float = 200.0
-@export var acceleration: float = 350.0
-@export var braking: float = 600.0
-@export var friction: float = 120.0
+# 2D Top-Down Truck Physics (Realistic European Semi-Truck scaled by Config.MAP_SCALE)
+# 90 km/h = 25.0 m/s = 31.25 world units/s at 1.25 units/m
+@export var max_forward_speed: float = (90.0 / 3.6) * Config.MAP_SCALE # 31.25 units/s (~90 km/h)
+@export var max_reverse_speed: float = (20.0 / 3.6) * Config.MAP_SCALE # 6.94 units/s (~20 km/h)
+@export var acceleration: float = (90.0 / 3.6 / 5.5) * Config.MAP_SCALE # ~5.68 units/s² (0-90 km/h in 5.5s)
+@export var braking: float = (90.0 / 3.6 / 2.0) * Config.MAP_SCALE # ~15.62 units/s² (90-0 km/h in 2.0s)
+@export var friction: float = 1.2 * Config.MAP_SCALE # ~1.5 units/s² (rolling resistance)
 @export var steer_speed: float = 2.0 # rad/s max steering
 
-var current_speed: float = 0.0 # scalar speed along facing direction
+var current_speed: float = 0.0 # scalar speed along facing direction in world units/s
 
 @onready var camera: Camera2D = $Camera2D
 
@@ -46,8 +47,8 @@ func _physics_process(delta: float) -> void:
 		current_speed = move_toward(current_speed, 0.0, friction * delta)
 
 	# Steering depends on motion
-	if abs(current_speed) > 5.0:
-		var speed_factor = clamp(abs(current_speed) / 300.0, 0.25, 1.0)
+	if abs(current_speed) > 0.5:
+		var speed_factor = clamp(abs(current_speed) / 12.0, 0.25, 1.0)
 		var dir_factor = 1.0 if current_speed >= 0.0 else -1.0
 		rotation += steer_input * steer_speed * speed_factor * dir_factor * delta
 

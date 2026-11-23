@@ -13,6 +13,8 @@ var pending_results: Dictionary = {} # String -> Dictionary (mutex-protected)
 var ready_queue: Array = [] # Array of Dictionary { "key": String, "data": Dictionary }
 var truck_ref: Node2D = null
 
+var last_chunk_build_ms: float = 0.0
+
 var _mutex: Mutex = Mutex.new()
 var _is_exiting: bool = false
 
@@ -51,52 +53,89 @@ const LAND_COLORS: Dictionary = {
 }
 
 # -------------------------------------------------------------
-# EnvChunk: Single 8192-unit Chunk Node2D (draws ONCE via _draw)
+# Helper: Fast Mesh Builder for 2D Colored Triangles
+# -------------------------------------------------------------
+class MeshBuilder extends RefCounted:
+	var vertices: PackedVector2Array = PackedVector2Array()
+	var colors: PackedColorArray = PackedColorArray()
+	var indices: PackedInt32Array = PackedInt32Array()
+
+	func add_quad(v0: Vector2, v1: Vector2, v2: Vector2, v3: Vector2, col: Color) -> void:
+		var base = vertices.size()
+		vertices.append(v0)
+		vertices.append(v1)
+		vertices.append(v2)
+		vertices.append(v3)
+		colors.append(col)
+		colors.append(col)
+		colors.append(col)
+		colors.append(col)
+		# 2 triangles
+		indices.append(base)
+		indices.append(base + 1)
+		indices.append(base + 2)
+		indices.append(base)
+		indices.append(base + 2)
+		indices.append(base + 3)
+
+	func add_thick_segment(p1: Vector2, p2: Vector2, half_w: float, col: Color) -> void:
+		var d = p1.distance_to(p2)
+		if d < 0.5:
+			return
+		var dir = (p2 - p1) / d
+		var norm = Vector2(-dir.y, dir.x) * half_w
+		add_quad(p1 - norm, p1 + norm, p2 + norm, p2 - norm, col)
+
+	func add_polygon(pts: PackedVector2Array, tris: PackedInt32Array, col: Color) -> void:
+		var base = vertices.size()
+		var n = pts.size()
+		for i in range(n):
+			vertices.append(pts[i])
+			colors.append(col)
+		var num_tris = tris.size() / 3
+		for t in range(num_tris):
+			indices.append(base + tris[t * 3])
+			indices.append(base + tris[t * 3 + 1])
+			indices.append(base + tris[t * 3 + 2])
+
+	func build_mesh() -> ArrayMesh:
+		if vertices.is_empty() or indices.is_empty():
+			return null
+		var surface_array = []
+		surface_array.resize(Mesh.ARRAY_MAX)
+		surface_array[Mesh.ARRAY_VERTEX] = vertices
+		surface_array[Mesh.ARRAY_COLOR] = colors
+		surface_array[Mesh.ARRAY_INDEX] = indices
+
+		var mesh = ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface_array)
+		return mesh
+
+# -------------------------------------------------------------
+# EnvChunk: Single 8192-unit Chunk Node2D with 1 MeshInstance2D per layer
 # -------------------------------------------------------------
 class EnvChunk extends Node2D:
-	var chunk_rect: Rect2 = Rect2()
-	var land_items: Array = [] # [PackedVector2Array, Color]
-	var water_multiline: PackedVector2Array = PackedVector2Array()
-	var rail_multiline: PackedVector2Array = PackedVector2Array()
-	var rail_sleepers: PackedVector2Array = PackedVector2Array()
-	var building_polys: Array = [] # PackedVector2Array (4 vertices)
-	var building_outlines: PackedVector2Array = PackedVector2Array()
-
-	func set_chunk_data(data: Dictionary) -> void:
-		chunk_rect = data.get("rect", Rect2())
-		land_items = data.get("land", [])
-		water_multiline = data.get("water_multiline", PackedVector2Array())
-		rail_multiline = data.get("rail_multiline", PackedVector2Array())
-		rail_sleepers = data.get("sleepers", PackedVector2Array())
-		building_polys = data.get("bld_polys", [])
-		building_outlines = data.get("bld_outlines", PackedVector2Array())
-		queue_redraw()
-
-	func _draw() -> void:
-		# 1. Background
-		if chunk_rect.size != Vector2.ZERO:
-			draw_rect(chunk_rect, Color(0.145, 0.173, 0.133, 1.0)) # #252c22
-
-		# 2. Land polygons
-		for item in land_items:
-			draw_colored_polygon(item[0], item[1])
-
-		# 3. Water waterways (batched)
-		if water_multiline.size() >= 2:
-			draw_multiline(water_multiline, Color(0.106, 0.157, 0.200, 1.0), 7.0)
-
-		# 4. Railways (batched sleepers + rail lines)
-		if rail_sleepers.size() >= 2:
-			draw_multiline(rail_sleepers, Color(0.20, 0.20, 0.22, 1.0), 2.0)
-		if rail_multiline.size() >= 2:
-			draw_multiline(rail_multiline, Color(0.32, 0.32, 0.34, 1.0), 2.5)
-
-		# 5. Buildings (fill + batched 1px outlines)
-		var bld_fill = Color(0.235, 0.247, 0.255, 1.0)
-		for poly in building_polys:
-			draw_colored_polygon(poly, bld_fill)
-		if building_outlines.size() >= 2:
-			draw_multiline(building_outlines, Color(0.160, 0.169, 0.176, 1.0), 1.0)
+	func set_chunk_meshes(land_m: Mesh, water_m: Mesh, rail_m: Mesh, bld_m: Mesh) -> void:
+		if land_m:
+			var mi = MeshInstance2D.new()
+			mi.name = "Land"
+			mi.mesh = land_m
+			add_child(mi)
+		if water_m:
+			var mi = MeshInstance2D.new()
+			mi.name = "Water"
+			mi.mesh = water_m
+			add_child(mi)
+		if rail_m:
+			var mi = MeshInstance2D.new()
+			mi.name = "Rail"
+			mi.mesh = rail_m
+			add_child(mi)
+		if bld_m:
+			var mi = MeshInstance2D.new()
+			mi.name = "Buildings"
+			mi.mesh = bld_m
+			add_child(mi)
 
 # -------------------------------------------------------------
 # EnvWorld Lifecycle & Streaming
@@ -155,6 +194,13 @@ func _process(_delta: float) -> void:
 		if cam:
 			cam_pos = cam.global_position
 
+	# Check zoom level: hide environment at high distance zoom out
+	var cam = get_viewport().get_camera_2d()
+	if cam:
+		var zoomed_out = cam.zoom.x < 0.35
+		if visible == zoomed_out:
+			visible = not zoomed_out
+
 	var center_cx: int = int(floor(cam_pos.x / chunk_size))
 	var center_cy: int = int(floor(cam_pos.y / chunk_size))
 
@@ -180,6 +226,8 @@ func _check_worker_tasks() -> void:
 		_mutex.unlock()
 
 		if res and not res.is_empty():
+			if "build_ms" in res:
+				last_chunk_build_ms = res["build_ms"]
 			ready_queue.append({ "key": k, "data": res })
 
 func _spawn_pending_chunk() -> void:
@@ -195,9 +243,15 @@ func _spawn_pending_chunk() -> void:
 		var coords = _parse_key(k)
 		if abs(coords.x - center_cx) <= UNLOAD_RADIUS and abs(coords.y - center_cy) <= UNLOAD_RADIUS:
 			if not active_chunks.has(k):
+				var data = item["data"]
 				var chunk_node = EnvChunk.new()
 				chunk_node.name = "EnvChunk_" + k
-				chunk_node.set_chunk_data(item["data"])
+				chunk_node.set_chunk_meshes(
+					data.get("land_mesh", null),
+					data.get("water_mesh", null),
+					data.get("rail_mesh", null),
+					data.get("buildings_mesh", null)
+				)
 				add_child(chunk_node)
 				active_chunks[k] = chunk_node
 				break # At most 1 chunk instantiated per frame!
@@ -249,9 +303,10 @@ func _parse_key(key: String) -> Vector2i:
 	return Vector2i.ZERO
 
 # -------------------------------------------------------------
-# Background Worker Task: Read file, parse JSON, prepare structures
+# Background Worker Task: Read file, parse JSON, build 4 Layer Meshes
 # -------------------------------------------------------------
 func _worker_load_chunk(key: String, file_path: String) -> void:
+	var t_start = Time.get_ticks_usec()
 	var coords = _parse_key(key)
 	var cx: int = coords.x
 	var cy: int = coords.y
@@ -277,10 +332,18 @@ func _worker_load_chunk(key: String, file_path: String) -> void:
 		_store_worker_result(key, result)
 		return
 
-	# 1. Chunk rect
-	result["rect"] = Rect2(float(cx) * CHUNK_SIZE, float(cy) * CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE)
+	# 1. Background + Land Mesh
+	var land_builder = MeshBuilder.new()
+	var ox: float = float(cx) * CHUNK_SIZE
+	var oy: float = float(cy) * CHUNK_SIZE
+	land_builder.add_quad(
+		Vector2(ox, oy),
+		Vector2(ox + CHUNK_SIZE, oy),
+		Vector2(ox + CHUNK_SIZE, oy + CHUNK_SIZE),
+		Vector2(ox, oy + CHUNK_SIZE),
+		Color(0.145, 0.173, 0.133, 1.0) # #252c22 background
+	)
 
-	# 2. Land polygons
 	var raw_land = data.get("land", [])
 	raw_land.sort_custom(func(a, b):
 		var pA = LAND_PRIORITY.get(int(a[0]), 99)
@@ -288,7 +351,6 @@ func _worker_load_chunk(key: String, file_path: String) -> void:
 		return pA < pB
 	)
 
-	var land_items: Array = []
 	for entry in raw_land:
 		if entry.size() < 2:
 			continue
@@ -298,37 +360,55 @@ func _worker_load_chunk(key: String, file_path: String) -> void:
 		if n < 3:
 			continue
 
+		# Bounding box filter for small degenerate polygons
+		var min_x: float = INF
+		var max_x: float = -INF
+		var min_y: float = INF
+		var max_y: float = -INF
 		var pts: PackedVector2Array = PackedVector2Array()
 		pts.resize(n)
 		for i in range(n):
-			pts[i] = Vector2(float(flat[i * 2]), float(flat[i * 2 + 1]))
+			var px = float(flat[i * 2])
+			var py = float(flat[i * 2 + 1])
+			pts[i] = Vector2(px, py)
+			if px < min_x: min_x = px
+			if px > max_x: max_x = px
+			if py < min_y: min_y = py
+			if py > max_y: max_y = py
+
+		if (max_x - min_x) * (max_y - min_y) < 150.0:
+			continue # Skip micro-slivers
 
 		var tris = Geometry2D.triangulate_polygon(pts)
 		if tris.is_empty():
-			continue # Safely skip untriangulable polygon
+			continue
 
 		var col = LAND_COLORS.get(type_code, Color(0.145, 0.173, 0.133, 1.0))
-		land_items.append([pts, col])
+		land_builder.add_polygon(pts, tris, col)
 
-	result["land"] = land_items
+	result["land_mesh"] = land_builder.build_mesh()
 
-	# 3. Waterways (batched into multiline)
+	# 2. Water Mesh (thick 7.0 px quads)
+	var water_builder = MeshBuilder.new()
 	var raw_water = data.get("water", [])
-	var water_multiline: PackedVector2Array = PackedVector2Array()
+	var water_col = Color(0.106, 0.157, 0.200, 1.0) # #1b2833
 	for flat in raw_water:
 		var n: int = flat.size() / 2
 		if n < 2:
 			continue
 		for i in range(n - 1):
-			water_multiline.append(Vector2(float(flat[i * 2]), float(flat[i * 2 + 1])))
-			water_multiline.append(Vector2(float(flat[(i + 1) * 2]), float(flat[(i + 1) * 2 + 1])))
+			var p1 = Vector2(float(flat[i * 2]), float(flat[i * 2 + 1]))
+			var p2 = Vector2(float(flat[(i + 1) * 2]), float(flat[(i + 1) * 2 + 1]))
+			water_builder.add_thick_segment(p1, p2, 3.5, water_col)
 
-	result["water_multiline"] = water_multiline
+	result["water_mesh"] = water_builder.build_mesh()
 
-	# 4. Railways (batched lines + sleepers)
+	# 3. Rail Mesh (lines + sleepers as quads)
+	var rail_builder = MeshBuilder.new()
 	var raw_rail = data.get("rail", [])
-	var rail_multiline: PackedVector2Array = PackedVector2Array()
-	var rail_sleepers: PackedVector2Array = PackedVector2Array()
+	var rail_col = Color(0.32, 0.32, 0.34, 1.0)
+	var sleeper_col = Color(0.20, 0.20, 0.22, 1.0)
+
 	for flat in raw_rail:
 		var n: int = flat.size() / 2
 		if n < 2:
@@ -336,8 +416,7 @@ func _worker_load_chunk(key: String, file_path: String) -> void:
 		for i in range(n - 1):
 			var p1 = Vector2(float(flat[i * 2]), float(flat[i * 2 + 1]))
 			var p2 = Vector2(float(flat[(i + 1) * 2]), float(flat[(i + 1) * 2 + 1]))
-			rail_multiline.append(p1)
-			rail_multiline.append(p2)
+			rail_builder.add_thick_segment(p1, p2, 1.25, rail_col)
 
 			var d = p1.distance_to(p2)
 			if d < 1.0:
@@ -347,17 +426,17 @@ func _worker_load_chunk(key: String, file_path: String) -> void:
 			var s: float = 0.0
 			while s <= d:
 				var mid = p1 + dir * s
-				rail_sleepers.append(mid - norm)
-				rail_sleepers.append(mid + norm)
+				rail_builder.add_thick_segment(mid - norm, mid + norm, 1.0, sleeper_col)
 				s += 16.0
 
-	result["rail_multiline"] = rail_multiline
-	result["sleepers"] = rail_sleepers
+	result["rail_mesh"] = rail_builder.build_mesh()
 
-	# 5. Buildings (fill polygons + batched multiline outlines)
+	# 4. Buildings Mesh (fills + 1px outlines as quads)
+	var bld_builder = MeshBuilder.new()
 	var raw_bld = data.get("buildings", [])
-	var bld_polys: Array = []
-	var bld_outlines: PackedVector2Array = PackedVector2Array()
+	var bld_fill = Color(0.235, 0.247, 0.255, 1.0)
+	var bld_out = Color(0.160, 0.169, 0.176, 1.0)
+
 	for b in raw_bld:
 		if b.size() < 5:
 			continue
@@ -365,6 +444,11 @@ func _worker_load_chunk(key: String, file_path: String) -> void:
 		var bcy: float = float(b[1])
 		var bw: float = float(b[2])
 		var bh: float = float(b[3])
+
+		# Skip tiny buildings (< 180 area or min dim < 6)
+		if bw * bh < 180.0 or bw < 6.0 or bh < 6.0:
+			continue
+
 		var angle: float = float(b[4])
 		var hw: float = bw * 0.5
 		var hh: float = bh * 0.5
@@ -376,20 +460,17 @@ func _worker_load_chunk(key: String, file_path: String) -> void:
 		var p3 = Vector2(bcx + hw * cos_a - hh * sin_a, bcy + hw * sin_a + hh * cos_a)
 		var p4 = Vector2(bcx - hw * cos_a - hh * sin_a, bcy - hw * sin_a + hh * cos_a)
 
-		bld_polys.append(PackedVector2Array([p1, p2, p3, p4]))
+		bld_builder.add_quad(p1, p2, p3, p4, bld_fill)
 
-		# Outline segments
-		bld_outlines.append(p1)
-		bld_outlines.append(p2)
-		bld_outlines.append(p2)
-		bld_outlines.append(p3)
-		bld_outlines.append(p3)
-		bld_outlines.append(p4)
-		bld_outlines.append(p4)
-		bld_outlines.append(p1)
+		# 1px outline
+		bld_builder.add_thick_segment(p1, p2, 0.5, bld_out)
+		bld_builder.add_thick_segment(p2, p3, 0.5, bld_out)
+		bld_builder.add_thick_segment(p3, p4, 0.5, bld_out)
+		bld_builder.add_thick_segment(p4, p1, 0.5, bld_out)
 
-	result["bld_polys"] = bld_polys
-	result["bld_outlines"] = bld_outlines
+	result["buildings_mesh"] = bld_builder.build_mesh()
+
+	result["build_ms"] = (Time.get_ticks_usec() - t_start) / 1000.0
 
 	_store_worker_result(key, result)
 
