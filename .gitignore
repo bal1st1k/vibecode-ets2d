@@ -10,3 +10,5 @@ node_modules/
 data/*.osm.pbf
 data/moldova-map.js
 data/env-tiles/
+.godot/
+godot/.godot/

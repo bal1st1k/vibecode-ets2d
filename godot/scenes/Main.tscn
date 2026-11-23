@@ -1,0 +1,40 @@
+[gd_scene load_steps=5 format=3 uid="uid://c7k0y4w2xv1"]
+
+[ext_resource type="Script" path="res://scripts/Main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/RoadWorld.gd" id="2_road"]
+[ext_resource type="Script" path="res://scripts/Truck.gd" id="3_truck"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_truck"]
+size = Vector2(80, 32)
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="RoadWorld" type="Node2D" parent="."]
+script = ExtResource("2_road")
+
+[node name="Truck" type="CharacterBody2D" parent="."]
+position = Vector2(1200, 3000)
+rotation = -1.5708
+script = ExtResource("3_truck")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Truck"]
+shape = SubResource("RectangleShape2D_truck")
+
+[node name="Camera2D" type="Camera2D" parent="Truck"]
+zoom = Vector2(0.8, 0.8)
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="DebugLabel" type="Label" parent="CanvasLayer"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 360.0
+offset_bottom = 120.0
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+text = "FPS: 60
+Pos: (1200, 3000)"

@@ -29,3 +29,4 @@
 | T-025 | Устранение дублей ширины дорог, единая zero-gc сетка рёбер и test-job-market в npm test | done | 71dcd87 |
 | T-026 | Генератор 8192-unit чанков окружения (land, water, rail, buildings) из OSM | done | e39b66e |
 | T-027 | Синхронизация проекции build-env с build-map (project, MAP_SCALE) | done | a7a5e74 |
+| G-001 | Каркас Godot 4: чанкованные дороги, управление тягачом, камера и экспорт дорог | done | f8a9c83 |
