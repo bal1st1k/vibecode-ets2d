@@ -14,6 +14,10 @@ const ROOT = path.resolve(__dirname, '..');
 const MAP_JSON = path.join(ROOT, 'data', 'moldova-map.json');
 const OUT_DIR = path.join(ROOT, 'godot', 'data');
 const OUT_FILE = path.join(OUT_DIR, 'roads.json');
+const ENV_INDEX_SRC = path.join(ROOT, 'data', 'env-index.json');
+const ENV_INDEX_DST = path.join(OUT_DIR, 'env-index.json');
+const ENV_TILES_SRC = path.join(ROOT, 'data', 'env-tiles');
+const ENV_TILES_DST = path.join(OUT_DIR, 'env-tiles');
 
 function getEdgeLanes(edge) {
   if (!edge) return 2;
@@ -67,6 +71,21 @@ function exportGodotRoads() {
 
   const stat = fs.statSync(OUT_FILE);
   console.log(`[export-godot] Exported ${segments.length} road segments to ${path.relative(ROOT, OUT_FILE)} (${(stat.size / 1024 / 1024).toFixed(2)} MB)`);
+
+  // Copy environment index and tiles
+  if (fs.existsSync(ENV_INDEX_SRC)) {
+    fs.copyFileSync(ENV_INDEX_SRC, ENV_INDEX_DST);
+    console.log(`[export-godot] Copied ${path.relative(ROOT, ENV_INDEX_SRC)} to ${path.relative(ROOT, ENV_INDEX_DST)}`);
+  }
+
+  if (fs.existsSync(ENV_TILES_SRC)) {
+    fs.mkdirSync(ENV_TILES_DST, { recursive: true });
+    const tileFiles = fs.readdirSync(ENV_TILES_SRC).filter(f => f.endsWith('.json'));
+    for (const f of tileFiles) {
+      fs.copyFileSync(path.join(ENV_TILES_SRC, f), path.join(ENV_TILES_DST, f));
+    }
+    console.log(`[export-godot] Copied ${tileFiles.length} env tiles to ${path.relative(ROOT, ENV_TILES_DST)}/`);
+  }
 }
 
 exportGodotRoads();

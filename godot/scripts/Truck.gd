@@ -13,8 +13,8 @@ var current_speed: float = 0.0 # scalar speed along facing direction
 @onready var camera: Camera2D = $Camera2D
 
 func _ready() -> void:
-	if position == Vector2.ZERO:
-		position = Vector2(1200, 3000)
+	if position == Vector2.ZERO or (position.x == 1200 and position.y == 3000):
+		position = Vector2(1200, 2950)
 		rotation = -PI / 2.0
 	queue_redraw()
 
