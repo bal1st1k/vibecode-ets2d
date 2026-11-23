@@ -33,7 +33,7 @@ script = ExtResource("3_truck")
 shape = SubResource("RectangleShape2D_truck")
 
 [node name="Camera2D" type="Camera2D" parent="Truck"]
-zoom = Vector2(0.8, 0.8)
+zoom = Vector2(0.48, 0.48)
 position_smoothing_enabled = true
 position_smoothing_speed = 8.0
 

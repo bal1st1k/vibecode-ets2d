@@ -87,13 +87,22 @@ func _process(delta: float) -> void:
 		var speed_kmh = 0.0
 		var park_status = ""
 		var artic_deg = 0.0
+		var odo_km = 0.0
+		var fuel_l = 0.0
+		var zoom_val = 1.0
 		if truck:
 			if "current_speed" in truck:
-				speed_kmh = (abs(truck.current_speed) / Config.MAP_SCALE) * 3.6
+				speed_kmh = Config.world_speed_to_kmh(truck.current_speed)
 			if "parking_brake" in truck and truck.parking_brake:
 				park_status = " [P]"
 			if "articulation_angle" in truck:
 				artic_deg = rad_to_deg(truck.articulation_angle)
+			if "odometer_km" in truck:
+				odo_km = truck.odometer_km
+			if "fuel_litres" in truck:
+				fuel_l = truck.fuel_litres
+			if truck.camera:
+				zoom_val = truck.camera.zoom.x
 
 		var cx = int(floor(pos.x / 2048.0))
 		var cy = int(floor(pos.y / 2048.0))
@@ -102,15 +111,15 @@ func _process(delta: float) -> void:
 		var build_ms = env_world.last_chunk_build_ms if env_world else 0.0
 
 		if show_f3_perf:
-			debug_label.text = "FPS: %d | Draw Calls: %d | Objects: %d\nPos: (%.1f, %.1f) | Speed: %.1f km/h%s | Artic: %.1f°\nRoad Chunk: %d_%d | Env Chunk: %d_%d\nChunk Build: %.1f ms | F3: Toggle Stats | Space: Handbrake" % [
+			debug_label.text = "FPS: %d | Draw Calls: %d | Objects: %d\nPos: (%.1f, %.1f) | Speed: %.1f km/h%s | Artic: %.1f°\nOdo: %.2f km | Fuel: %.1f L | Zoom: %.2fx | Scale: 1:%.0f\nRoad Chunk: %d_%d | Env Chunk: %d_%d | Chunk Build: %.1f ms\nF3: Toggle Stats | Space: Handbrake | Wheel: Zoom" % [
 				current_fps, draw_calls, objects_count,
 				pos.x, pos.y, speed_kmh, park_status, artic_deg,
-				cx, cy, ecx, ecy,
-				build_ms
+				odo_km, fuel_l, zoom_val, Config.DISTANCE_COMPRESSION,
+				cx, cy, ecx, ecy, build_ms
 			]
 		else:
-			debug_label.text = "FPS: %d | Speed: %.1f km/h%s | Artic: %.1f° | Pos: (%.1f, %.1f) | F3: Stats" % [
-				current_fps, speed_kmh, park_status, artic_deg, pos.x, pos.y
+			debug_label.text = "FPS: %d | Speed: %.1f km/h%s | Artic: %.1f° | Odo: %.2f km | Fuel: %.1f L | F3: Stats" % [
+				current_fps, speed_kmh, park_status, artic_deg, odo_km, fuel_l
 			]
 
 	if should_screenshot and not screenshot_taken and frame_counter >= screenshot_frames:
