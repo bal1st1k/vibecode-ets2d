@@ -124,15 +124,13 @@ func _physics_process(delta: float) -> void:
 		current_speed = Config.kmh_to_world_speed(spd)
 		throttle = 0.5
 	else:
-		if Input.is_action_pressed("accelerate") or Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-			throttle += 1.0
-		if Input.is_action_pressed("brake_reverse") or Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-			throttle -= 1.0
+		var accel_str = max(Input.get_action_strength("accelerate"), 1.0 if (Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP)) else 0.0)
+		var brake_str = max(Input.get_action_strength("brake_reverse"), 1.0 if (Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN)) else 0.0)
+		throttle = accel_str - brake_str
 
-		if Input.is_action_pressed("steer_left") or Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-			steer_input -= 1.0
-		if Input.is_action_pressed("steer_right") or Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-			steer_input += 1.0
+		var left_str = max(Input.get_action_strength("steer_left"), 1.0 if (Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT)) else 0.0)
+		var right_str = max(Input.get_action_strength("steer_right"), 1.0 if (Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT)) else 0.0)
+		steer_input = right_str - left_str
 
 	# 1. Parking brake simulation
 	if parking_brake:

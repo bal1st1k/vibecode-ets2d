@@ -66,10 +66,24 @@ func _ready() -> void:
 		elif arg == "--screenshot":
 			should_screenshot = true
 
+	_update_safe_area()
+	get_viewport().size_changed.connect(_update_safe_area)
+
+func _update_safe_area() -> void:
+	if not debug_label:
+		return
+	var safe_area = DisplayServer.get_display_safe_area()
+	if safe_area.size.x > 0:
+		var in_left = max(16.0, float(safe_area.position.x))
+		var in_top = max(16.0, float(safe_area.position.y))
+		debug_label.position = Vector2(in_left, in_top)
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F3:
 			show_f3_perf = not show_f3_perf
+		elif event.keycode == KEY_F4:
+			Config.touch_controls_enabled = not Config.touch_controls_enabled
 
 func _process(delta: float) -> void:
 	frame_counter += 1
@@ -111,7 +125,7 @@ func _process(delta: float) -> void:
 		var build_ms = env_world.last_chunk_build_ms if env_world else 0.0
 
 		if show_f3_perf:
-			debug_label.text = "FPS: %d | Draw Calls: %d | Objects: %d\nPos: (%.1f, %.1f) | Speed: %.1f km/h%s | Artic: %.1f°\nOdo: %.2f km | Fuel: %.1f L | Zoom: %.2fx | Scale: 1:%.0f\nRoad Chunk: %d_%d | Env Chunk: %d_%d | Chunk Build: %.1f ms\nF3: Toggle Stats | Space: Handbrake | Wheel: Zoom" % [
+			debug_label.text = "FPS: %d | Draw Calls: %d | Objects: %d\nPos: (%.1f, %.1f) | Speed: %.1f km/h%s | Artic: %.1f°\nOdo: %.2f km | Fuel: %.1f L | Zoom: %.2fx | Scale: 1:%.0f\nRoad Chunk: %d_%d | Env Chunk: %d_%d | Chunk Build: %.1f ms\nF3: Stats | F4: Touch | Space: Handbrake | Wheel: Zoom" % [
 				current_fps, draw_calls, objects_count,
 				pos.x, pos.y, speed_kmh, park_status, artic_deg,
 				odo_km, fuel_l, zoom_val, Config.DISTANCE_COMPRESSION,

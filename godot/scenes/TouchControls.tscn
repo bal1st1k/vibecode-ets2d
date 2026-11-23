@@ -1,0 +1,187 @@
+[gd_scene load_steps=6 format=3 uid="uid://b00tcontrols1"]
+
+[ext_resource type="Script" path="res://scripts/TouchControls.gd" id="1_touch"]
+[ext_resource type="Script" path="res://scripts/TouchSteeringWheel.gd" id="2_wheel"]
+[ext_resource type="Script" path="res://scripts/TouchPedal.gd" id="3_pedal"]
+[ext_resource type="Script" path="res://scripts/TouchParkingButton.gd" id="4_park"]
+[ext_resource type="Script" path="res://scripts/TouchPauseButton.gd" id="5_pause"]
+
+[node name="TouchControls" type="CanvasLayer"]
+process_mode = 3
+layer = 20
+script = ExtResource("1_touch")
+
+[node name="RootControl" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="SafeAreaContainer" type="MarginContainer" parent="RootControl"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 16
+
+[node name="HUDLayout" type="Control" parent="RootControl/SafeAreaContainer"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="SteeringWheel" type="Control" parent="RootControl/SafeAreaContainer/HUDLayout"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = -260.0
+offset_right = 260.0
+offset_bottom = -20.0
+grow_vertical = 0
+script = ExtResource("2_wheel")
+
+[node name="PedalsContainer" type="Control" parent="RootControl/SafeAreaContainer/HUDLayout"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -250.0
+offset_top = -225.0
+offset_right = -15.0
+offset_bottom = -15.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="BrakePedal" type="Control" parent="RootControl/SafeAreaContainer/HUDLayout/PedalsContainer"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -140.0
+offset_right = 105.0
+offset_bottom = -5.0
+grow_vertical = 0
+script = ExtResource("3_pedal")
+pedal_type = "brake"
+
+[node name="GasPedal" type="Control" parent="RootControl/SafeAreaContainer/HUDLayout/PedalsContainer"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -105.0
+offset_top = -195.0
+offset_right = -20.0
+offset_bottom = -5.0
+grow_horizontal = 0
+grow_vertical = 0
+script = ExtResource("3_pedal")
+pedal_type = "gas"
+
+[node name="ParkingBrakeButton" type="Control" parent="RootControl/SafeAreaContainer/HUDLayout"]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -95.0
+offset_top = -305.0
+offset_right = -31.0
+offset_bottom = -241.0
+grow_horizontal = 0
+grow_vertical = 0
+script = ExtResource("4_park")
+
+[node name="PauseButton" type="Control" parent="RootControl/SafeAreaContainer/HUDLayout"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -68.0
+offset_top = 12.0
+offset_right = -16.0
+offset_bottom = 64.0
+grow_horizontal = 0
+script = ExtResource("5_pause")
+
+[node name="PauseOverlay" type="Control" parent="RootControl"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Backdrop" type="ColorRect" parent="RootControl/PauseOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.04, 0.06, 0.08, 0.75)
+
+[node name="Panel" type="Panel" parent="RootControl/PauseOverlay"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -120.0
+offset_right = 150.0
+offset_bottom = 120.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="RootControl/PauseOverlay/Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="RootControl/PauseOverlay/Panel/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "ПАУЗА"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="RootControl/PauseOverlay/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "Продолжить"
+
+[node name="RestartButton" type="Button" parent="RootControl/PauseOverlay/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "Начать заново"
+
+[node name="QuitButton" type="Button" parent="RootControl/PauseOverlay/Panel/VBoxContainer"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "Выход"

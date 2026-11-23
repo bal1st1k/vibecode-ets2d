@@ -8,6 +8,22 @@ const MAP_SCALE: float = 1.25
 # Multiplies world speed (units/s) so vehicle traverses compressed map at realistic game-time speed
 var DISTANCE_COMPRESSION: float = 8.0
 
+# Touch controls (auto-enabled on touchscreen devices, or toggled on desktop via F4 or env TOUCH_CONTROLS)
+var touch_controls_enabled: bool = false
+
+func _ready() -> void:
+	if OS.has_environment("TOUCH_CONTROLS"):
+		var env_t = OS.get_environment("TOUCH_CONTROLS")
+		touch_controls_enabled = (env_t == "1" or env_t == "true")
+	elif DisplayServer.is_touchscreen_available():
+		touch_controls_enabled = true
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F4:
+			touch_controls_enabled = not touch_controls_enabled
+			print("[Config] Touch controls toggled (F4): ", touch_controls_enabled)
+
 # Conversion helpers
 func get_world_scale() -> float:
 	return MAP_SCALE
